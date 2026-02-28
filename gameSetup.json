@@ -1,0 +1,13 @@
+{
+    "games": 
+    [
+        {
+            "instruction": "Solve the game",
+            "board": ["Red", "Green", "Blue"]
+        },
+        {
+            "instruction": "Solve the game",
+            "board": ["Red", "Green", "Blue"]
+        }
+    ]
+}
