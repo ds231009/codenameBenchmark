@@ -28,16 +28,23 @@ class GameConfig:
         return self
     
     def getFullBoard(self):
-        return [{w["word"]: w["group"]} for w in self.board]
+        return [{w["word"].lower(): w["group"].lower()} for w in self.board]
+    
+    def getRevealedBoard(self):
+        return [w["word"].lower() for w in self.board if w["revealed"] is False]
     
     def getWordBoard(self):
-        return [w["word"] for w in self.board]
+        return [w["word"].lower() for w in self.board]
     
-    def findWord(self, word):
-        for i in len(self.gameSize):
-            if self.gameSize[i].word.lower() == word:
-                self.gameSize[i].revealed = True
-                return True
+    def revealedWord(self, word):
+        for referenceWord in self.board:
+            print("Checking reveal for the word", word, "-", referenceWord["word"].lower(), referenceWord["word"].lower() == word)
+            if referenceWord["word"].lower() == word:
+                referenceWord["revealed"] = True
+                
+                print("Found word in referenceList")
+                
+                return referenceWord.copy()
         
         return False
     

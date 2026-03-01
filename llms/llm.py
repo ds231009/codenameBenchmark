@@ -13,7 +13,7 @@ class LLM():
         message = createMessage(self.prompt, board, self.role, clue)
         response: ChatResponse = chat(model='qwen2.5:14b', messages=message)
         return response.message.content
-        
+
     def summary(self):
         return {
             "name": self.modelName,

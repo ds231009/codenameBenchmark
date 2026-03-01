@@ -16,5 +16,22 @@
             "English": 5
         }
     },
-    "gameResults": []
+    "gameResults": [
+        {
+            "clue": "cloud",
+            "guess": [
+                {
+                    "word": "airplane",
+                    "group": "blue",
+                    "revealed": true
+                },
+                {
+                    "word": "flight",
+                    "group": "assasin",
+                    "revealed": true
+                }
+            ],
+            "score": -25
+        }
+    ]
 }
