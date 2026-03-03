@@ -18,9 +18,9 @@ class GameConfig:
             {"word": "Argentina", "group": "red", "revealed": False}, 
             {"word": "Hotel", "group": "red", "revealed": False}, 
             {"word": "World", "group": "assassin", "revealed": False}, 
-            {"word": "Sprint", "group": "assaassin", "revealed": False}, 
-            {"word": "house", "group": "assaassin", "revealed": False}, 
-            {"word": "flight", "group": "assaassin", "revealed": False}]
+            {"word": "Sprint", "group": "assassin", "revealed": False}, 
+            {"word": "house", "group": "assassin", "revealed": False}, 
+            {"word": "flight", "group": "assassin", "revealed": False}]
         self.initalBoard = self.board
 
     def setGameSize(self, size: int):
