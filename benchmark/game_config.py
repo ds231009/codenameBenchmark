@@ -1,32 +1,15 @@
+import random
+
 class GameConfig:
     def __init__(self, parent):
         self._parent = parent
-        self.gameSize = None
+        self.groupConfig = None
         self.languageConfig = {}
-        self.board = [
-            {"word": "Peru", "group": "blue", "revealed": False},
-            {"word": "Hello", "group": "blue", "revealed": False}, 
-            {"word": "Chocolate", "group": "blue", "revealed": False}, 
-            {"word": "pastery", "group": "blue", "revealed": False},
-            {"word": "Badminton", "group": "blue", "revealed": False}, 
-            {"word": "Football", "group": "blue", "revealed": False},
-            {"word": "airplane", "group": "blue", "revealed": False}, 
-            {"word": "Poet", "group": "blue", "revealed": False}, 
-            {"word": "Tree", "group": "red", "revealed": False},
-            {"word": "Hunt", "group": "red", "revealed": False},
-            {"word": "Inn", "group": "red", "revealed": False}, 
-            {"word": "Argentina", "group": "red", "revealed": False}, 
-            {"word": "Hotel", "group": "red", "revealed": False}, 
-            {"word": "World", "group": "assassin", "revealed": False}, 
-            {"word": "Sprint", "group": "assassin", "revealed": False}, 
-            {"word": "house", "group": "assassin", "revealed": False}, 
-            {"word": "flight", "group": "assassin", "revealed": False}]
-        self.initalBoard = self.board
 
-    def setGameSize(self, size: int):
-        if size <= 0:
+    def setGroupConfig(self, groupConfig):
+        if groupConfig["blue"] <= 0:
             raise ValueError("Game size must be > 0")
-        self.gameSize = size
+        self.groupConfig = groupConfig
         return self
 
     def setLanguageConfig(self, config: dict):
@@ -35,18 +18,36 @@ class GameConfig:
         self.languageConfig = config
         return self
     
-    def getBluePlayedBoard(self):
-        return [{w["word"].lower(): w["group"].lower()} for w in self.board if w["revealed"] is False and w["group"] == "blue"]
-        
     
-    def getFullBoard(self):
-        return [{w["word"].lower(): w["group"].lower()} for w in self.board if w["revealed"] is False]
+    def generateBoard(self):
+        with open('./benchmark/wordlist.txt', 'r') as file:
+            inputBoard = [line.strip() for line in file]
+       
+        board = [] 
+        for key, value in self.groupConfig.items():
+            for i in range(int(value)):
+                wordString = inputBoard.pop(random.randrange(len(inputBoard)))
+                board.append({"word": wordString.lower(), "group": key, "revealed": False})
+                print(wordString, key, value)
+
+        self.initalBoard = board
+        return board
     
-    def getRevealedBoard(self):
-        return [w["word"].lower() for w in self.board if w["revealed"] is False]
-    
-    def getWordBoard(self):
-        return [w["word"].lower() for w in self.board if w["revealed"] is False]
+    def getBoard(self, structure="detailed", showOnlyNotRevieled = False,  filterByGroup = ["blue", "red", "assassin"]):
+        board = []
+        for word in self.board:
+            if showOnlyNotRevieled and word["revealed"]: continue
+            
+            if word["group"] in filterByGroup:
+                if structure == "detailed":
+                    board.append(word)
+                elif structure == "codemaster":
+                    board.append({word["word"].lower(): word["group"].lower()})
+                elif structure == "word":
+                    board.append(word["word"])
+                else:
+                    raise ValueError("Not a valid structure")
+        return board
     
     def revealedWord(self, word):
         for referenceWord in self.board:
@@ -61,14 +62,16 @@ class GameConfig:
     
     def summary(self):
         return {
-                "gameSize": self.gameSize, 
+                "gameSize": self.groupConfig, 
                 "languageConfig": self.languageConfig,
                 "board": self.initalBoard
             }
 
     def done(self):
-        if self.gameSize is None:
+        if self.groupConfig is None:
             raise ValueError("Game size must be defined")
 
+        self.board = self.generateBoard()
         self._parent.gameConfig = self
         return self._parent
+    

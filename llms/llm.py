@@ -43,17 +43,26 @@ class LLM():
         })
         
         log(self.role, f"Sending {len(self.history)} messages to LLM...")
-        
-        # 4. Send the ENTIRE history to the model
-        response: ChatResponse = chat(model=self.modelName, messages=self.history)
+        response = self.callLLM()
         
         # 5. CRITICAL: Save the model's answer back into the history!
         self.history.append({
             'role': 'assistant',
-            'content': response.message.content
+            'content': response
         })
 
-        return response.message.content
+        return response
+    
+    def callLLM(self):
+        if self.type == "local":
+            response: ChatResponse = chat(model=self.modelName, messages=self.history)
+            return response.message.content
+        elif self.type == "ustp":
+            response: ChatResponse = chat(model=self.modelName, messages=self.history)
+            return response.message.content
+        
+        return "No valid LLM Type"
+            
 
     def summary(self):
         return {

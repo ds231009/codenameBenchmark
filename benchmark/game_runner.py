@@ -36,13 +36,13 @@ class Game:
         
 
     def runGame(self):
-        for round in range(self.gameConfig.gameSize):
+        for round in range(sum(self.gameConfig.groupConfig.values())):
             log("runGame", f"Playing round {round}")
             continueGame = self.runRound()
             if not continueGame:
                 log("runGame", "Game over")
                 break
-            if len(self.gameConfig.getRevealedBoard()) == 0:
+            if len(self.gameConfig.getBoard("word", True)) == 0:
                 log("runGame", "Board solved")
                 break
         self.saveStats()
@@ -68,7 +68,7 @@ class Game:
         
         for attempt in range(max_attempts):
             try: 
-                rawClue = self.modelCodemaster.getLLMResponse(self.gameConfig.getFullBoard())
+                rawClue = self.modelCodemaster.getLLMResponse(self.gameConfig.getBoard("codemaster", True))
                 
                 match = re.search(r'\(\s*([a-zA-Z]+)\s*,\s*(\d+)\s*\)', rawClue)
                 if not match:
@@ -77,7 +77,7 @@ class Game:
                 clue_word = match.group(1).lower()
                 count = int(match.group(2))
                 
-                if clue_word in self.gameConfig.getWordBoard():
+                if clue_word in self.gameConfig.getBoard("word", True):
                     raise ValueError(f"Clue '{clue_word}' is in the word list.")
                 
                 # SUCCESS LOG
@@ -121,7 +121,7 @@ class Game:
                 if error_feedback:
                     prompt_clue = f"{clue}. WARNING: {error_feedback}"
                     
-                rawGuess = self.modelGuesser.getLLMResponse(self.gameConfig.getRevealedBoard(), prompt_clue)
+                rawGuess = self.modelGuesser.getLLMResponse(self.gameConfig.getBoard("word",True), prompt_clue)
 
                 match = re.search(r'\[([^\]]*)\]', rawGuess)
                 if not match:
@@ -134,7 +134,7 @@ class Game:
                     log("getGuess", "Guesser chose to pass [no guess]")
                     return None
                 
-                if guess_word in self.gameConfig.getRevealedBoard():
+                if guess_word in self.gameConfig.getBoard("word",True):
                     # SUCCESS LOG (Guess)
                     log("getGuess", f"Guesser chose word: [{guess_word}]")
                     return self.gameConfig.revealedWord(guess_word)
@@ -168,9 +168,9 @@ class Game:
             score = -25
             log("handleGuess", f"Guessed '{word}' as assassin")
             
-        log("handleGuess", f"Checking if game is finshied. Here are the open cards: {self.gameConfig.getBluePlayedBoard()}")
+        log("handleGuess", f"Checking if game is finshied. Here are the open cards: {self.gameConfig.getBoard('codemaster', True, ['blue'])}")
             
-        if len(self.gameConfig.getBluePlayedBoard()) == 0:
+        if len(self.gameConfig.getBoard("codemaster",True,["blue"])) == 0:
             continueGame = False
         
         return continueGame, continueRound, score
