@@ -4,16 +4,24 @@ class GameConfig:
         self.gameSize = None
         self.languageConfig = {}
         self.board = [
-            {"word": "Tree", "group": "red", "revealed": False},
-            {"word": "flight", "group": "assasin", "revealed": False}, 
+            {"word": "Peru", "group": "blue", "revealed": False},
             {"word": "Hello", "group": "blue", "revealed": False}, 
-            {"word": "World", "group": "assasin", "revealed": False}, 
             {"word": "Chocolate", "group": "blue", "revealed": False}, 
             {"word": "pastery", "group": "blue", "revealed": False},
-            {"word": "Inn", "group": "red", "revealed": False}, 
+            {"word": "Badminton", "group": "blue", "revealed": False}, 
+            {"word": "Football", "group": "blue", "revealed": False},
             {"word": "airplane", "group": "blue", "revealed": False}, 
-            {"word": "house", "group": "assisin", "revealed": False}, 
-            {"word": "Peru", "group": "blue", "revealed": False}]
+            {"word": "Poet", "group": "blue", "revealed": False}, 
+            {"word": "Tree", "group": "red", "revealed": False},
+            {"word": "Hunt", "group": "red", "revealed": False},
+            {"word": "Inn", "group": "red", "revealed": False}, 
+            {"word": "Argentina", "group": "red", "revealed": False}, 
+            {"word": "Hotel", "group": "red", "revealed": False}, 
+            {"word": "World", "group": "assassin", "revealed": False}, 
+            {"word": "Sprint", "group": "assaassin", "revealed": False}, 
+            {"word": "house", "group": "assaassin", "revealed": False}, 
+            {"word": "flight", "group": "assaassin", "revealed": False}]
+        self.initalBoard = self.board
 
     def setGameSize(self, size: int):
         if size <= 0:
@@ -27,18 +35,21 @@ class GameConfig:
         self.languageConfig = config
         return self
     
+    def getBluePlayedBoard(self):
+        return [{w["word"].lower(): w["group"].lower()} for w in self.board if w["revealed"] is False and w["group"] == "blue"]
+        
+    
     def getFullBoard(self):
-        return [{w["word"].lower(): w["group"].lower()} for w in self.board]
+        return [{w["word"].lower(): w["group"].lower()} for w in self.board if w["revealed"] is False]
     
     def getRevealedBoard(self):
         return [w["word"].lower() for w in self.board if w["revealed"] is False]
     
     def getWordBoard(self):
-        return [w["word"].lower() for w in self.board]
+        return [w["word"].lower() for w in self.board if w["revealed"] is False]
     
     def revealedWord(self, word):
         for referenceWord in self.board:
-            print("Checking reveal for the word", word, "-", referenceWord["word"].lower(), referenceWord["word"].lower() == word)
             if referenceWord["word"].lower() == word:
                 referenceWord["revealed"] = True
                 
@@ -51,7 +62,8 @@ class GameConfig:
     def summary(self):
         return {
                 "gameSize": self.gameSize, 
-                "languageConfig": self.languageConfig
+                "languageConfig": self.languageConfig,
+                "board": self.initalBoard
             }
 
     def done(self):

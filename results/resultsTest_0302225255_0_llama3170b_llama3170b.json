@@ -1,0 +1,118 @@
+{
+    "modelDetailsCodemaster": {
+        "name": "llama3.1:70b",
+        "type": "local",
+        "prompt": "\nYou are playing a game of Codemaster in the role of the CODEMASTER.\nYou will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.\n\nYour objective is to help your partner (the Guesser) identify all the \"blue\" words in as few turns as possible, without them guessing \"red\" words or the \"assassin\" word.\n\n### Rules & Scoring:\n* Your partner must guess the \"blue\" words based on the clue you provide.\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if your partner guesses a \"red\" word.\n* GAME OVER (You lose) if your partner guesses the \"assassin\" word.\n\n### Move Constraints:\n* You must provide exactly ONE clue per turn.\n* The clue word MUST be a valid English word.\n* The clue word MUST NOT share the same word stem as any word currently visible on the board.\n\n### Output Format:\nYou must reply with a single tuple containing your clue word and the number of board words it connects to. Your partner will make their guess based on this clue. Count has to be >0.\nReturn ONLY this strict tuple format: (word, count)\n\nFew-shot examples:\n(ocean, 2)\n(greek, 1)\n    "
+    },
+    "modelDetailsGuesser": {
+        "name": "llama3.1:70b",
+        "type": "local",
+        "prompt": "\n    You are playing a game of Codemaster in the role of the GUESSER.\nYou will receive a list of available words on a board and a clue from your partner (the Codemaster).\n\nYour objective is to guess the hidden \"blue\" words based on the Codemaster's clues in as few turns as possible, while avoiding \"red\" words and the \"assassin\" word.\n\n### Rules & Scoring:\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if you guess a \"red\" word.\n* GAME OVER (You lose) if you guess the \"assassin\" word.\n\n### Move Instructions:\n* You must perform a single move by making one guess at a time.\n* The word you guess MUST be chosen from the provided board.\n* The word MUST be spelled exactly as it appears on the board.\n* If you are unsure and want to end your turn, you can choose to pass.\n\n### Output Format:\nIf you want to guess a word, output ONLY the word enclosed in brackets:\n[word]\n\nIf you do not want to guess anything, output ONLY this exact string:\n[no guess]\n"
+    },
+    "gameSetup": {
+        "gameSize": 16,
+        "languageConfig": {
+            "German": 2,
+            "English": 5
+        },
+        "board": [
+            {
+                "word": "Tree",
+                "group": "red",
+                "revealed": false
+            },
+            {
+                "word": "flight",
+                "group": "assaassin",
+                "revealed": false
+            },
+            {
+                "word": "Hello",
+                "group": "blue",
+                "revealed": true
+            },
+            {
+                "word": "World",
+                "group": "assassin",
+                "revealed": false
+            },
+            {
+                "word": "Chocolate",
+                "group": "blue",
+                "revealed": true
+            },
+            {
+                "word": "pastery",
+                "group": "blue",
+                "revealed": true
+            },
+            {
+                "word": "Inn",
+                "group": "red",
+                "revealed": false
+            },
+            {
+                "word": "house",
+                "group": "assaassin",
+                "revealed": false
+            },
+            {
+                "word": "Peru",
+                "group": "blue",
+                "revealed": true
+            }
+        ]
+    },
+    "gameResults": [
+        {
+            "clue": "country",
+            "count": 1,
+            "guesses": [
+                {
+                    "guess": {
+                        "word": "Peru",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                }
+            ]
+        },
+        {
+            "clue": "pastry",
+            "count": 2,
+            "guesses": [
+                {
+                    "guess": {
+                        "word": "pastery",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                },
+                {
+                    "guess": {
+                        "word": "Chocolate",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                }
+            ]
+        },
+        {
+            "clue": "greeting",
+            "count": 1,
+            "guesses": [
+                {
+                    "guess": {
+                        "word": "Hello",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                }
+            ]
+        }
+    ]
+}

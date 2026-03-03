@@ -1,56 +1,61 @@
 from benchmark import Benchmark
 
-prompt = """CODEMASTER:
-    You are playing a game of Codemaster in the role of codemaster.
-    You will get a list of words and their group: <blue|red|assasin>
-        Perform a single move of the game, by replying with a single tuple.
-    
-    Rules
-    - Your partner has to guess the blue words based of your clue
-    - Every correctly guessed word is +1 points.
-    - If your partner guesses a red word it results in -1 point.
-    - If your partner gusses an assasin word, you loose the game.
-    
-    The goal is to guess all the blue words in a minumum amount of turns, while not picking a red word and never picking an assasin word.
-    
-    Your output to your partner is in this tuple format: (word, count)
-    Return only this structure.
-    
-    word: Your clue word to your partner. 
-    count: The amount of words connected to the clue.
-    Your partner is going to make it's guess based of this clue.
-    
-    Constraints:
-    - word has to be an English word
-    - Is not allowed to be the same word stam as any word on the board
-    
-    Fex shot example:
-    (sky, 2), (greek, 1)
+prompt = """
+You are playing a game of Codemaster in the role of the CODEMASTER.
+You will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.
+
+Your objective is to help your partner (the Guesser) identify all the "blue" words in as few turns as possible, without them guessing "red" words or the "assassin" word.
+
+### Rules & Scoring:
+* Your partner must guess the "blue" words based on the clue you provide.
+* +1 point for every correctly guessed "blue" word.
+* -1 point if your partner guesses a "red" word.
+* GAME OVER (You lose) if your partner guesses the "assassin" word.
+
+### Move Constraints:
+* You must provide exactly ONE clue per turn.
+* The clue word MUST be a valid English word.
+* The clue word MUST NOT share the same word stem as any word currently visible on the board.
+
+### Output Format:
+You must reply with a single tuple containing your clue word and the number of board words it connects to. Your partner will make their guess based on this clue. Count has to be >0.
+Return ONLY this strict tuple format: (word, count)
+
+Few-shot examples:
+(ocean, 2)
+(greek, 1)
     """
-promptExplainer = """GUESSER:
-    You are playing a game of Codemaster in the role of guesser.
-    You will get a list of words.
-    Perform a single move of the game, by replying with a single output: <word|no guess>
-    
-    Rules
-    - You have to guess the blue words based of your clue
-    - Every correctly guessed word is +1 points.
-    - If you guesse a red word it results in -1 point.
-    - If you guesse an assasin word, you loose the game.
-    
-    The goal is to guess all the blue words in a minumum amount of turns, while not picking a red word and never picking an assasin word.
-    
-    If you want to guess a word, output only a string this: [word]
-    The word has to be exactly the word of the board.
-    
-    If you dont want to guess anything, output only this: [no guess]
-    """
+promptExplainer = """
+    You are playing a game of Codemaster in the role of the GUESSER.
+You will receive a list of available words on a board and a clue from your partner (the Codemaster).
+
+Your objective is to guess the hidden "blue" words based on the Codemaster's clues in as few turns as possible, while avoiding "red" words and the "assassin" word.
+
+### Rules & Scoring:
+* +1 point for every correctly guessed "blue" word.
+* -1 point if you guess a "red" word.
+* GAME OVER (You lose) if you guess the "assassin" word.
+
+### Move Instructions:
+* You must perform a single move by making one guess at a time.
+* The word you guess MUST be chosen from the provided board.
+* The word MUST be spelled exactly as it appears on the board.
+* If you are unsure and want to end your turn, you can choose to pass.
+
+### Output Format:
+If you want to guess a word, output ONLY the word enclosed in brackets:
+[word]
+
+If you do not want to guess anything, output ONLY this exact string:
+[no guess]
+"""
 
 def main():
     benchmark = (
         Benchmark()
-        .addLLM({"modelName": "gpt", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        # .addLLM({"modelName": "gpt4", "type": "local", "prompt": prompt})
+        .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
+        .addLLM({"modelName": "qwen2.5:14b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
+        .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
         .configureGame()
             .setGameSize(16)
             .setLanguageConfig({"German": 2, "English": 5})

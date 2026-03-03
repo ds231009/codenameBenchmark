@@ -1,11 +1,13 @@
 from .game_config import GameConfig
 from .game_runner import Game
 
+from datetime import datetime
 
 class Benchmark:
     def __init__(self):
         self.modelList = []
         self.gameConfig = None
+        self.id = datetime.now().strftime("%m%d%H%M%S")
 
     def addLLM(self, modelDetail):
         
@@ -25,8 +27,8 @@ class Benchmark:
         return self
 
     def runBenchmarkSet(self):
-        for model in self.modelList:
-            benchmarkGame = Game(model, self.gameConfig)
+        for i, model in enumerate(self.modelList):
+            benchmarkGame = Game(model, self.gameConfig, f"{self.id}_{i}")
             benchmarkGame.runGame()
 
     def summary(self):

@@ -1,0 +1,100 @@
+{
+    "modelDetailsCodemaster": {
+        "name": "qwen2.5:14b",
+        "type": "local",
+        "prompt": "CODEMASTER:\n    You are playing a game of Codemaster in the role of codemaster.\n    You will get a list of words and their group: <blue|red|assassin>\n        Perform a single move of the game, by replying with a single tuple.\n    \n    Rules\n    - Your partner has to guess the blue words based of your clue\n    - Every correctly guessed word is +1 points.\n    - If your partner guesses a red word it results in -1 point.\n    - If your partner gusses an assassin word, you loose the game.\n    \n    The goal is to guess all the blue words in a minumum amount of turns, while not picking a red word and never picking an assassin word.\n    \n    Your output to your partner is in this tuple format: (word, count)\n    Return only this structure.\n    \n    word: Your clue word to your partner. \n    count: The amount of words connected to the clue.\n    Your partner is going to make it's guess based of this clue.\n    \n    Constraints:\n    - word has to be an English word\n    - Is not allowed to be the same word stam as any word on the board\n    \n    Fex shot example:\n    (sky, 2), (greek, 1)\n    "
+    },
+    "modelDetailsGuesser": {
+        "name": "qwen2.5:14b",
+        "type": "local",
+        "prompt": "GUESSER:\n    You are playing a game of Codemaster in the role of guesser.\n    You will get a list of words.\n    Perform a single move of the game, by replying with a single output: <word|no guess>\n    \n    Rules\n    - You have to guess the blue words based of your clue\n    - Every correctly guessed word is +1 points.\n    - If you guesse a red word it results in -1 point.\n    - If you guesse an assassin word, you loose the game.\n    \n    The goal is to guess all the blue words in a minumum amount of turns, while not picking a red word and never picking an assassin word.\n    \n    If you want to guess a word, output only a string this: [word]\n    The word has to be exactly the word of the board.\n    \n    If you dont want to guess anything, output only this: [no guess]\n    "
+    },
+    "gameSetup": {
+        "gameSize": 16,
+        "languageConfig": {
+            "German": 2,
+            "English": 5
+        },
+        "board": [
+            {
+                "word": "Tree",
+                "group": "red",
+                "revealed": false
+            },
+            {
+                "word": "flight",
+                "group": "assaassin",
+                "revealed": false
+            },
+            {
+                "word": "Hello",
+                "group": "blue",
+                "revealed": false
+            },
+            {
+                "word": "World",
+                "group": "assaassin",
+                "revealed": false
+            },
+            {
+                "word": "Chocolate",
+                "group": "blue",
+                "revealed": true
+            },
+            {
+                "word": "pastery",
+                "group": "blue",
+                "revealed": true
+            },
+            {
+                "word": "Inn",
+                "group": "red",
+                "revealed": false
+            },
+            {
+                "word": "house",
+                "group": "assaassin",
+                "revealed": false
+            },
+            {
+                "word": "Peru",
+                "group": "blue",
+                "revealed": false
+            }
+        ]
+    },
+    "gameResults": [
+        {
+            "clue": "clinic",
+            "count": 3,
+            "guesses": []
+        },
+        {
+            "clue": "clinic",
+            "count": 3,
+            "guesses": []
+        },
+        {
+            "clue": "sweet",
+            "count": 3,
+            "guesses": [
+                {
+                    "guess": {
+                        "word": "Chocolate",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                },
+                {
+                    "guess": {
+                        "word": "pastery",
+                        "group": "blue",
+                        "revealed": true
+                    },
+                    "score": 1
+                }
+            ]
+        }
+    ]
+}
