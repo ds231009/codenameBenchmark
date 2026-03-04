@@ -17,21 +17,45 @@ class GameConfig:
             raise TypeError("Language config must be a dictionary")
         self.languageConfig = config
         return self
+
+    def setDuration(self, rounds):
+        self.rounds = rounds
+        return self
+
+    def setRefinementStep(self, roundsUntilRefinement):
+        self.roundsUntilRefinement = roundsUntilRefinement
+        return self
     
     
     def generateBoard(self):
         with open('./benchmark/wordlist.txt', 'r') as file:
-            inputBoard = [line.strip() for line in file]
-       
-        board = [] 
-        for key, value in self.groupConfig.items():
-            for i in range(int(value)):
-                wordString = inputBoard.pop(random.randrange(len(inputBoard)))
-                board.append({"word": wordString.lower(), "group": key, "revealed": False})
-                print(wordString, key, value)
+            rawBoard = [line.strip() for line in file]
+        
+        boards = []
+        for round in range(self.rounds):
+            inputBoard = rawBoard.copy() # FIXED: Copy so we don't drain the master list
+            board = [] 
+            for key, value in self.groupConfig.items():
+                for i in range(int(value)):
+                    wordString = inputBoard.pop(random.randrange(len(inputBoard)))
+                    board.append({"word": wordString.lower(), "group": key, "revealed": False})
+            boards.append(board)
+            
+        return boards
+        
+    def setActiveBoard(self, index):
+        """Loads a specific board from the generated list for the current game."""
+        import copy
+        self.board = copy.deepcopy(self.boards[index])
 
-        self.initalBoard = board
-        return board
+    def done(self):
+        if self.groupConfig is None:
+            raise ValueError("Game size must be defined")
+
+        self.boards = self.generateBoard()
+        self.setActiveBoard(0) # Initialize the first board
+        self._parent.gameConfig = self
+        return self._parent
     
     def getBoard(self, structure="detailed", showOnlyNotRevieled = False,  filterByGroup = ["blue", "red", "assassin"]):
         board = []
@@ -66,12 +90,3 @@ class GameConfig:
                 "languageConfig": self.languageConfig,
                 "board": self.initalBoard
             }
-
-    def done(self):
-        if self.groupConfig is None:
-            raise ValueError("Game size must be defined")
-
-        self.board = self.generateBoard()
-        self._parent.gameConfig = self
-        return self._parent
-    

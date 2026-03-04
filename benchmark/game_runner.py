@@ -28,47 +28,161 @@ def log(function, *args, **kwargs):
 
 class Game:
     def __init__(self, model, gameConfig, benchmarkID):
-        self.gameResults = []
+        self.all_games_results = [] 
+        self.refinements_results = [] # <--- NEW: Stores the refinement data for the JSON
+        self.refinement_batch = []    # <--- NEW: The temporary list that holds data for 5 games
+        
         self.modelCodemaster = LLM(model, "Codemaster")
         self.modelGuesser = LLM(model, "Guesser")
         self.gameConfig = copy.deepcopy(gameConfig)
         self.benchmarkID = benchmarkID
         
 
-    def runGame(self):
-        for round in range(sum(self.gameConfig.groupConfig.values())):
-            log("runGame", f"Playing round {round}")
-            continueGame = self.runRound()
-            if not continueGame:
-                log("runGame", "Game over")
-                break
-            if len(self.gameConfig.getBoard("word", True)) == 0:
-                log("runGame", "Board solved")
-                break
+    def runAllGames(self):
+        total_games = self.gameConfig.rounds 
+        refinement_step = getattr(self.gameConfig, 'roundsUntilRefinement', 5)
+
+        for game_index in range(total_games):
+            log("runGame", f"=== STARTING GAME {game_index + 1} OF {total_games} ===")
+            
+            self.gameConfig.setActiveBoard(game_index)
+            
+            # 1. Capture the initial board BEFORE the game starts
+            initial_board = self.gameConfig.getBoard("detailed", filterByGroup=["blue", "red", "assassin"])
+            
+            # 2. Play the game
+            game_rounds_data, game_turn_history = self.playSingleGame()
+            
+            # 3. Save the single game to the master JSON list
+            self.all_games_results.append({
+                "game_index": game_index + 1,
+                "rounds": game_rounds_data,
+                "turn_history": game_turn_history # Optional: adds text history to JSON
+            })
+
+            # 4. Add this game's summary to the Refinement Batch
+            self.refinement_batch.append({
+                "game_index": game_index + 1,
+                "initial_board": initial_board,
+                "turn_history": game_turn_history
+            })
+
+            # 5. Break / Memory Wipe / Refinement Logic
+            if (game_index + 1) % refinement_step == 0:
+                log("runGame", f"--- BREAK TIME: Refinement and Clearing Memory ---")
+                
+                # Have the LLM analyze the batch of games
+                # (You will need to implement writeRefinement in your LLM class to accept this list)
+                reflection_output = self.modelCodemaster.writeRefinement(self.refinement_batch)
+                
+                # Save the reflection and the batch data to our final JSON results
+                self.refinements_results.append({
+                    "after_game": game_index + 1,
+                    "batch_data": self.refinement_batch,
+                    "llm_reflection": reflection_output
+                })
+                
+                # RESET the batch for the next 5 games
+                self.refinement_batch = [] 
+                
+                # Clear memories
+                self.modelCodemaster.clearMemory()
+                self.modelGuesser.clearMemory()
+                
         self.saveStats()
+
+
+    def playSingleGame(self):
+        self.turn_history = [] 
+        current_game_rounds = [] 
+
+        max_turns = sum(self.gameConfig.groupConfig.values())
+        
+        for turn in range(max_turns):
+            log("runGame", f"Playing turn {turn}")
+            
+            continueGame, round_data = self.runRound()
+            current_game_rounds.append(round_data)
+            
+            # 1. Check for the WIN condition FIRST
+            if len(self.gameConfig.getBoard("word", True, ["blue"])) == 0:
+                log("runGame", "Board solved! All blue words found. (WIN)")
+                break
+                
+            # 2. If not won, check if game was forced to end (Assassin hit)
+            if not continueGame:
+                log("runGame", "Game over. Assassin hit! (LOSS)")
+                break
+                
+        # RETURN BOTH: the raw JSON data AND the text-based turn history
+        return current_game_rounds, self.turn_history
         
         
     def runRound(self):
         log("runGame", "--- Starting New Round ---")
-        clue, count = self.getClue()
+        
+        # 1. Build the cumulative history for the Codemaster
+        if not self.turn_history:
+            history_prompt = "This is the first turn. No guesses have been made yet."
+        else:
+            history_prompt = "HISTORY OF PREVIOUS TURNS IN THIS GAME:\n" + "\n".join(self.turn_history)
+        
+        # 2. Get Clue 
+        clue, count = self.getClue(feedback=history_prompt)
+        
+        # FIX: If the Codemaster failed entirely, skip the Guesser and waste the turn
+        if clue is None:
+            log("runGame", "--- Round Summary: Codemaster failed. Turn skipped. ---")
+            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: Codemaster failed to format a clue. Turn skipped.")
+            
+            round_data = {
+                "clue": "FAILED_FORMAT", 
+                "count": 0, 
+                "guesses": []
+            }
+            # Return True to keep playing, but this turn is wasted
+            return True, round_data 
+            
+        # 3. If clue is valid, get Guesses
         guesses, continueGame = self.getGuesses(clue, count)
         
-        log("runGame", f"--- Round Summary: Clue: ({clue}, {count}), Guesses made: {len(guesses)}{guesses} ---")
+        log("runGame", f"--- Round Summary: Clue: ({clue}, {count}), Guesses made: {len(guesses)} ---")
         
-        self.gameResults.append({
+        # 4. Compile the JSON data for this round
+        round_data = {
             "clue": clue, 
             "count": count, 
-            "guesses": [{"guess": g["guess"], "score": g["score"]} for g in guesses]
-        })
+            "guesses": []
+        }
+        guess_strings = [] 
         
-        return continueGame
+        for g in guesses:
+            if g.get("guess"): 
+                word = g["guess"]["word"]
+                group = g["guess"]["group"]
+                score = g["score"]
+                
+                round_data["guesses"].append({"word": word, "group": group, "score": score})
+                guess_strings.append(f"'{word}' (which was {group})")
+
+        # 5. Update the Codemaster's history log for the NEXT turn
+        if not guess_strings:
+            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: You gave clue ({clue}, {count}). Guesser passed.")
+        else:
+            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: You gave clue ({clue}, {count}). Guesser picked: {', '.join(guess_strings)}.")
+
+        return continueGame, round_data
         
-    def getClue(self):
+    def getClue(self, feedback=None):
         max_attempts = 5
         
         for attempt in range(max_attempts):
             try: 
-                rawClue = self.modelCodemaster.getLLMResponse(self.gameConfig.getBoard("codemaster", True))
+                # Pass the feedback into the LLM call
+                rawClue = self.modelCodemaster.getLLMResponse(
+                    self.gameConfig.getBoard("codemaster", True), 
+                    feedback=feedback
+                )
                 
                 match = re.search(r'\(\s*([a-zA-Z]+)\s*,\s*(\d+)\s*\)', rawClue)
                 if not match:
@@ -80,15 +194,15 @@ class Game:
                 if clue_word in self.gameConfig.getBoard("word", True):
                     raise ValueError(f"Clue '{clue_word}' is in the word list.")
                 
-                # SUCCESS LOG
                 log("getClue", f"Codemaster gave clue: ({clue_word}, {count})")
                 return clue_word, count
                 
             except Exception as e:
-                # ERROR LOG: Actually print the error so you can debug it!
                 log("getClue", f"Attempt {attempt + 1} failed: {e}")
     
-        raise ValueError(f"Codemaster failed to provide a valid clue after {max_attempts} tries.")
+        # FIX: Instead of raising an error, log it and return None
+        log("getClue", "Codemaster failed to provide a valid clue. Wasting turn.")
+        return None, 0
 
     def getGuesses(self, clue, count):
         guesses = []
@@ -182,7 +296,8 @@ class Game:
             "modelDetailsCodemaster": self.modelCodemaster.summary(),
             "modelDetailsGuesser": self.modelGuesser.summary(),
             "gameSetup": self.gameConfig.summary(),
-            "gameResults": self.gameResults
+            "games": self.all_games_results,
+            "refinements": self.refinements_results # <--- Nested refinement data added here!
         }
 
         saveFile(file_path, result)

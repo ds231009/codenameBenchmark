@@ -53,11 +53,13 @@ If you do not want to guess anything, output ONLY this exact string:
 def main():
     benchmark = (
         Benchmark()
-        # .addLLM({"modelName": "granite3.2-vision:2b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
         .addLLM({"modelName": "qwen2.5:14b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
         # .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
+        # .addLLM({"modelName": "", "type": "debug", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
         .configureGame()
-            .setGroupConfig({"blue": 5, "red": 5,"assassin": 5})
+            .setDuration(10)
+            .setRefinementStep(5)
+            .setGroupConfig({"blue": 3, "red": 3,"assassin": 3})
             .setLanguageConfig({"German": 2, "English": 5})
             .done()
         .build()

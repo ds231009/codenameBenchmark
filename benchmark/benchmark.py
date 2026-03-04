@@ -29,7 +29,7 @@ class Benchmark:
     def runBenchmarkSet(self):
         for i, model in enumerate(self.modelList):
             benchmarkGame = Game(model, self.gameConfig, f"{self.id}_{i}")
-            benchmarkGame.runGame()
+            benchmarkGame.runAllGames()
 
     def summary(self):
         return {
