@@ -1,0 +1,319 @@
+{
+    "modelDetailsCodemaster": {
+        "name": "llama3.1:70b",
+        "type": "local",
+        "prompt": "\nYou are playing a game of Codemaster in the role of the CODEMASTER.\nYou will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.\n\nYour objective is to help your partner (the Guesser) identify all the \"blue\" words in as few turns as possible, without them guessing \"red\" words or the \"assassin\" word.\n\n### Rules & Scoring:\n* Your partner must guess the \"blue\" words based on the clue you provide.\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if your partner guesses a \"red\" word.\n* GAME OVER (You lose) if your partner guesses the \"assassin\" word.\n\n### Move Constraints:\n* You must provide exactly ONE clue per turn.\n* The clue word MUST be a valid English word.\n* The clue word MUST NOT share the same word stem as any word currently visible on the board.\n\n### Output Format:\nYou must reply with a single tuple containing your clue word and the number of board words it connects to. Your partner will make their guess based on this clue. Count has to be >0.\nReturn ONLY this strict tuple format: (word, count)\n\nFew-shot examples:\n(ocean, 2)\n(greek, 1)\n    ",
+        "final_strategy": "After analyzing my performance in the two Codenames games, I've identified areas for improvement and formulated strategic rules to enhance my future gameplay:\n\n1. **Increase clue specificity**: In both games, the Guesser picked a word that was somewhat related to the clue but not the intended target. This suggests that my clues were too broad or general. To mitigate this, I'll aim to provide more specific and precise clues that uniquely identify the target words.\n2. **Assess risk before giving single-word clues**: With only one word being targeted by the clue in both games, there was a higher risk of misunderstanding. In the future, I'll evaluate whether giving a single-word clue is worth the risk or if it's better to provide a more general clue that targets multiple words.\n3. **Monitor Guesser's patterns and adjust**: Although not directly applicable from these two games, it's essential to recognize the Guesser's tendencies and adapt my strategy accordingly. If I notice they tend to pick more abstract connections, I'll aim to provide clues that cater to those strengths.\n\nThese strategic guidelines will help me refine my approach for future Codenames games."
+    },
+    "modelDetailsGuesser": {
+        "name": "llama3.1:70b",
+        "type": "local",
+        "prompt": "\n    You are playing a game of Codemaster in the role of the GUESSER.\nYou will receive a list of available words on a board and a clue from your partner (the Codemaster).\n\nYour objective is to guess the hidden \"blue\" words based on the Codemaster's clues in as few turns as possible, while avoiding \"red\" words and the \"assassin\" word.\n\n### Rules & Scoring:\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if you guess a \"red\" word.\n* GAME OVER (You lose) if you guess the \"assassin\" word.\n\n### Move Instructions:\n* You must perform a single move by making one guess at a time.\n* The word you guess MUST be chosen from the provided board.\n* The word MUST be spelled exactly as it appears on the board.\n* If you are unsure and want to end your turn, you can choose to pass.\n\n### Output Format:\nIf you want to guess a word, output ONLY the word enclosed in brackets:\n[word]\n\nIf you do not want to guess anything, output ONLY this exact string:\n[no guess]\n",
+        "final_strategy": ""
+    },
+    "gameSetup": {
+        "gameSize": {
+            "blue": 1,
+            "red": 1,
+            "assassin": 2
+        },
+        "languageConfig": {
+            "German": 2,
+            "English": 5
+        },
+        "board": [
+            [
+                {
+                    "word": "dragon",
+                    "group": "blue",
+                    "revealed": false
+                },
+                {
+                    "word": "pass",
+                    "group": "red",
+                    "revealed": false
+                },
+                {
+                    "word": "wind",
+                    "group": "assassin",
+                    "revealed": false
+                },
+                {
+                    "word": "model",
+                    "group": "assassin",
+                    "revealed": false
+                }
+            ],
+            [
+                {
+                    "word": "face",
+                    "group": "blue",
+                    "revealed": false
+                },
+                {
+                    "word": "seal",
+                    "group": "red",
+                    "revealed": false
+                },
+                {
+                    "word": "glove",
+                    "group": "assassin",
+                    "revealed": false
+                },
+                {
+                    "word": "root",
+                    "group": "assassin",
+                    "revealed": false
+                }
+            ],
+            [
+                {
+                    "word": "face",
+                    "group": "blue",
+                    "revealed": false
+                },
+                {
+                    "word": "hand",
+                    "group": "red",
+                    "revealed": false
+                },
+                {
+                    "word": "flute",
+                    "group": "assassin",
+                    "revealed": false
+                },
+                {
+                    "word": "stock",
+                    "group": "assassin",
+                    "revealed": false
+                }
+            ],
+            [
+                {
+                    "word": "pupil",
+                    "group": "blue",
+                    "revealed": false
+                },
+                {
+                    "word": "sub",
+                    "group": "red",
+                    "revealed": false
+                },
+                {
+                    "word": "alien",
+                    "group": "assassin",
+                    "revealed": false
+                },
+                {
+                    "word": "mouse",
+                    "group": "assassin",
+                    "revealed": false
+                }
+            ]
+        ]
+    },
+    "games": [
+        {
+            "game_index": 1,
+            "rounds": [
+                {
+                    "clue": "mythic",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "dragon",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (mythic, 1). Guesser picked: 'dragon' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 2,
+            "rounds": [
+                {
+                    "clue": "feature",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "face",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (feature, 1). Guesser picked: 'face' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 3,
+            "rounds": [
+                {
+                    "clue": "beauty",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "face",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (beauty, 1). Guesser picked: 'face' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 4,
+            "rounds": [
+                {
+                    "clue": "school",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "pupil",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (school, 1). Guesser picked: 'pupil' (which was blue)."
+            ]
+        }
+    ],
+    "refinements": [
+        {
+            "after_game": 2,
+            "batch_data": [
+                {
+                    "game_index": 1,
+                    "initial_board": [
+                        {
+                            "word": "dragon",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "pass",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "wind",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "model",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (mythic, 1). Guesser picked: 'dragon' (which was blue)."
+                    ]
+                },
+                {
+                    "game_index": 2,
+                    "initial_board": [
+                        {
+                            "word": "face",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "seal",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "glove",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "root",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (feature, 1). Guesser picked: 'face' (which was blue)."
+                    ]
+                }
+            ],
+            "llm_reflection": "**Analysis**\n\nIn both games, my partner's guesses were accurate and resulted in picking a blue word. However, I must consider whether the clues I provided were optimal.\n\nUpon reflection, I notice that in both cases, I gave single-word clues with a count of 1. While this led to correct guesses, it may not always be the most efficient or safe approach. Giving low-count clues can increase the risk of the guesser picking an incorrect word, especially if there are multiple related words on the board.\n\n**Strategic Guidelines**\n\nTo improve my future performance:\n\n1. **Use higher clue counts when possible**: Providing clues that cover multiple words can help mitigate the risk of incorrect guesses and make it more likely for the guesser to pick the intended words.\n2. **Prioritize specificity over brevity**: While concise clues are important, I should prioritize specificity to reduce ambiguity and ensure the guesser has a clear direction.\n3. **Assess word relationships on the board**: Before giving a clue, consider the presence of related words that could lead to incorrect guesses and adjust my strategy accordingly.\n\nBy following these guidelines, I aim to improve my performance and provide more effective clues in future games."
+        },
+        {
+            "after_game": 4,
+            "batch_data": [
+                {
+                    "game_index": 3,
+                    "initial_board": [
+                        {
+                            "word": "face",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "hand",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "flute",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "stock",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (beauty, 1). Guesser picked: 'face' (which was blue)."
+                    ]
+                },
+                {
+                    "game_index": 4,
+                    "initial_board": [
+                        {
+                            "word": "pupil",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "sub",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "alien",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "mouse",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (school, 1). Guesser picked: 'pupil' (which was blue)."
+                    ]
+                }
+            ],
+            "llm_reflection": "After analyzing my performance in the two Codenames games, I've identified areas for improvement and formulated strategic rules to enhance my future gameplay:\n\n1. **Increase clue specificity**: In both games, the Guesser picked a word that was somewhat related to the clue but not the intended target. This suggests that my clues were too broad or general. To mitigate this, I'll aim to provide more specific and precise clues that uniquely identify the target words.\n2. **Assess risk before giving single-word clues**: With only one word being targeted by the clue in both games, there was a higher risk of misunderstanding. In the future, I'll evaluate whether giving a single-word clue is worth the risk or if it's better to provide a more general clue that targets multiple words.\n3. **Monitor Guesser's patterns and adjust**: Although not directly applicable from these two games, it's essential to recognize the Guesser's tendencies and adapt my strategy accordingly. If I notice they tend to pick more abstract connections, I'll aim to provide clues that cater to those strengths.\n\nThese strategic guidelines will help me refine my approach for future Codenames games."
+        }
+    ]
+}

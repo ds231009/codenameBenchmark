@@ -88,5 +88,5 @@ class GameConfig:
         return {
                 "gameSize": self.groupConfig, 
                 "languageConfig": self.languageConfig,
-                "board": self.initalBoard
+                "board": self.boards
             }
