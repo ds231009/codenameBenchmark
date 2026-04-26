@@ -1,4 +1,4 @@
-from benchmark import Benchmark
+from codenameBenchmark.src.benchmark import Benchmark
 
 prompt = """
 You are playing a game of Codemaster in the role of the CODEMASTER.
