@@ -1,4 +1,4 @@
-from codenameBenchmark.src.benchmark import Benchmark
+from ccl_benchmark.benchmark import Benchmark
 
 prompt = """
 You are playing a game of Codemaster in the role of the CODEMASTER.
@@ -50,27 +50,22 @@ If you do not want to guess anything, output ONLY this exact string:
 [no guess]
 """
 
-def main():
-    benchmark = (
-        Benchmark()
-        # .addLLM({"modelName": "qwen2.5:14b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        .addLLM({"modelName": "llama3.1:70b", "type": "local", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        # .addLLM({"modelName": "", "type": "debug", "prompts": {"Codemaster": prompt, "Guesser": promptExplainer}})
-        .configureGame()
-            .setDuration(4)
-            .setRefinementStep(2)
-            .setGroupConfig({"blue": 1, "red": 1,"assassin": 2})
-            .setLanguageConfig({"German": 2, "English": 5})
-            .done()
-        .build()
-    )
+def run_simulation(bench_config: dict, lab_model) -> tuple[float, dict]:
+    # benchmark = (
+    #     Benchmark()
+    #     .addLLM(lab_model)
+    #     .configureGame()
+    #         .setDuration(4)
+    #         .setRefinementStep(2)
+    #         .setGroupConfig({"blue": 1, "red": 1,"assassin": 2})
+    #         .setLanguageConfig({"German": 2, "English": 5})
+    #         .done()
+    #     .build()
+    # )
 
-    # print(benchmark.summary())
+    # # print(benchmark.summary())
 
-    benchmark.runBenchmarkSet()
-
-
-if __name__ == "__main__":
-    main()
+    # benchmark.runBenchmarkSet()
+    
+    # return final_score, raw_details
+    return 0.3, {}

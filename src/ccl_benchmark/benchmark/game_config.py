@@ -1,3 +1,4 @@
+from pathlib import Path
 import random
 
 class GameConfig:
@@ -26,9 +27,10 @@ class GameConfig:
         self.roundsUntilRefinement = roundsUntilRefinement
         return self
     
-    
     def generateBoard(self):
-        with open('./benchmark/wordlist.txt', 'r') as file:
+        WORDLIST_PATH = Path(__file__).parent  / "wordlist.txt"
+
+        with open(WORDLIST_PATH, "r", encoding="utf-8") as file:
             rawBoard = [line.strip() for line in file]
         
         boards = []

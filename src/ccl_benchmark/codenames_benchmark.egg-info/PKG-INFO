@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: codenames_benchmark
+Version: 0.1.0
+Summary: A custom game-based QA benchmark for LLM evaluation.
+Author-email: Julian Pecho <ds231009@ustp-students.at>
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown

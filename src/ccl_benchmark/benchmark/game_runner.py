@@ -1,4 +1,4 @@
-from codenameBenchmark.src.llms.llm import LLM
+from ccl_benchmark.llms.llm import LLM
 
 from pathlib import Path
 from datetime import datetime

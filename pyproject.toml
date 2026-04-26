@@ -3,11 +3,11 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "llm-escape-room"
+name = "ccl_benchmark"
 version = "0.1.0"
 description = "A custom game-based QA benchmark for LLM evaluation."
 authors = [
-    {name = "University Lab Researchers", email = "research@university.edu"}
+    {name = "Julian Pecho", email = "ds231009@ustp-students.at"}
 ]
 readme = "README.md"
 requires-python = ">=3.9"
