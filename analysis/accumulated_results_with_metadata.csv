@@ -1,0 +1,7 @@
+game_index,round_index,guessed_word,score,benchmarkId,setup_totalGameSize,cm_name,cm_type,guesser_name,guesser_type,setup_gameSize_blue,setup_gameSize_red,setup_gameSize_assassin,setup_languageConfig_German,setup_languageConfig_English
+0,0,dragon,1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5
+0,0,dragon2,1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5
+1,0,face,1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5
+2,2,hand,-1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5
+2,3,face,1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5
+3,0,pupil,1,0305111436,4,llama3.1:70b,local,llama3.1:70b,local,1,1,2,2,5

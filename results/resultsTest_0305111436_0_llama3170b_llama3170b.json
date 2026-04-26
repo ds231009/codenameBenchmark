@@ -1,4 +1,5 @@
 {
+    "benchmark": "0305111436",
     "modelDetailsCodemaster": {
         "name": "llama3.1:70b",
         "type": "local",
@@ -118,10 +119,15 @@
             "rounds": [
                 {
                     "clue": "myth",
-                    "count": 1,
+                    "count": 2,
                     "guesses": [
                         {
                             "word": "dragon",
+                            "group": "blue",
+                            "score": 1
+                        },
+                        {
+                            "word": "dragon2",
                             "group": "blue",
                             "score": 1
                         }

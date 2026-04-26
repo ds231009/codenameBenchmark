@@ -293,6 +293,7 @@ class Game:
         file_path = createDirectory(self.benchmarkID, self.modelCodemaster.modelName, self.modelGuesser.modelName)
         
         result = {
+            "benchmark": self.benchmarkID,
             "modelDetailsCodemaster": self.modelCodemaster.summary(),
             "modelDetailsGuesser": self.modelGuesser.summary(),
             "gameSetup": self.gameConfig.summary(),

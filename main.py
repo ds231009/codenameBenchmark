@@ -1,5 +1,7 @@
 from benchmark import Benchmark
 
+# https://github.com/sagelga/codenames/tree/main
+
 prompt = """
 You are playing a game of Codemaster in the role of the CODEMASTER.
 You will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.

@@ -1,4 +1,5 @@
 {
+    "benchmark": "0305111436",
     "modelDetailsCodemaster": {
         "name": "llama3.1:70b",
         "type": "local",

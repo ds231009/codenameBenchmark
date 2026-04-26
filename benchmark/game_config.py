@@ -88,5 +88,7 @@ class GameConfig:
         return {
                 "gameSize": self.groupConfig, 
                 "languageConfig": self.languageConfig,
+                "duration": self.rounds,
+                "roundsUntilRefinement": self.roundsUntilRefinement,
                 "board": self.boards
             }
