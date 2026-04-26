@@ -5,21 +5,19 @@ from datetime import datetime
 
 class Benchmark:
     def __init__(self):
-        self.modelList = []
         self.gameConfig = None
         self.id = datetime.now().strftime("%m%d%H%M%S")
 
-    def addLLM(self, modelDetail):
-        
-        self.modelList.append(modelDetail)
+    def addLLM(self, model):
+        self.llm = model
         return self
 
     def configureGame(self):
         return GameConfig(self)
 
     def build(self):
-        if not self.modelList:
-            raise ValueError("Benchmark must contain at least one LLM")
+        if not self.llm:
+            raise ValueError("Benchmark must contain LLM")
 
         if self.gameConfig is None:
             raise ValueError("Benchmark requires a configured game")
@@ -27,9 +25,8 @@ class Benchmark:
         return self
 
     def runBenchmarkSet(self):
-        for i, model in enumerate(self.modelList):
-            benchmarkGame = Game(model, self.gameConfig, f"{self.id}_{i}")
-            benchmarkGame.runAllGames()
+        benchmarkGame = Game(self.llm, self.gameConfig, self.id)
+        benchmarkGame.runAllGames()
 
     def summary(self):
         return {

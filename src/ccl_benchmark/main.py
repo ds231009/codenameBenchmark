@@ -51,21 +51,18 @@ If you do not want to guess anything, output ONLY this exact string:
 """
 
 def run_simulation(bench_config: dict, lab_model) -> tuple[float, dict]:
-    # benchmark = (
-    #     Benchmark()
-    #     .addLLM(lab_model)
-    #     .configureGame()
-    #         .setDuration(4)
-    #         .setRefinementStep(2)
-    #         .setGroupConfig({"blue": 1, "red": 1,"assassin": 2})
-    #         .setLanguageConfig({"German": 2, "English": 5})
-    #         .done()
-    #     .build()
-    # )
+    benchmark = (
+        Benchmark()
+        .addLLM(lab_model)
+        .configureGame()
+            .setDuration(4)
+            .setRefinementStep(2)
+            .setGroupConfig({"blue": 1, "red": 1,"assassin": 2})
+            .setLanguageConfig({"German": 2, "English": 5})
+            .done()
+        .build()
+    )
 
-    # # print(benchmark.summary())
-
-    # benchmark.runBenchmarkSet()
-    
-    # return final_score, raw_details
+    print(benchmark.summary())
+    return benchmark.runBenchmarkSet()
     return 0.3, {}
