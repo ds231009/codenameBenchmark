@@ -1,4 +1,4 @@
-from ccl_benchmark.llms.llm import LLM
+from ustp_ccl_benchmark.llms.llm_wrapper import LLM
 
 from pathlib import Path
 from datetime import datetime
@@ -301,8 +301,7 @@ class Game:
         }
 
         saveFile(file_path, result)
-        
-        
+
 
 def createDirectory(benchmarkID, modelCodemaster, modelGuesser):
     BASE_DIR = Path(__file__).resolve().parent
