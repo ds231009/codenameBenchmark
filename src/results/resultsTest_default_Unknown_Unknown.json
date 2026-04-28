@@ -1,0 +1,241 @@
+{
+    "modelDetailsCodemaster": {
+        "name": "Unknown",
+        "role": "Codemaster",
+        "prompt": "You are playing a game of Codemaster in the role of the CODEMASTER.\nYou will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.\n\nYour objective is to help your partner (the Guesser) identify all the \"blue\" words in as few\nturns as possible, without them guessing \"red\" words or the \"assassin\" word.\n\n### Rules & Scoring:\n* Your partner must guess the \"blue\" words based on the clue you provide.\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if your partner guesses a \"red\" word.\n* GAME OVER (You lose) if your partner guesses the \"assassin\" word.\n\n### Move Constraints:\n* You must provide exactly ONE clue per turn.\n* The clue word MUST be a valid English word.\n* The clue word MUST NOT share the same word stem as any word currently visible on the board.\n\n### Output Format:\nYou must reply with a single tuple containing your clue word and the number of board words it\nconnects to. Your partner will make their guess based on this clue. Count has to be >0.\nReturn ONLY this strict tuple format: (word, count)\n\nFew-shot examples:\n(ocean, 2)\n(greek, 1)",
+        "final_strategy": "No valid LLM configuration found."
+    },
+    "modelDetailsGuesser": {
+        "name": "Unknown",
+        "role": "Guesser",
+        "prompt": "You are playing a game of Codemaster in the role of the GUESSER.\nYou will receive a list of available words on a board and a clue from your partner (the Codemaster).\n\nYour objective is to guess the hidden \"blue\" words based on the Codemaster's clues in as few\nturns as possible, while avoiding \"red\" words and the \"assassin\" word.\n\n### Rules & Scoring:\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if you guess a \"red\" word.\n* GAME OVER (You lose) if you guess the \"assassin\" word.\n\n### Move Instructions:\n* You must perform a single move by making one guess at a time.\n* The word you guess MUST be chosen from the provided board.\n* The word MUST be spelled exactly as it appears on the board.\n* If you are unsure and want to end your turn, you can choose to pass.\n\n### Output Format:\nIf you want to guess a word, output ONLY the word enclosed in brackets:\n[word]\n\nIf you do not want to guess anything, output ONLY this exact string:\n[no guess]",
+        "final_strategy": ""
+    },
+    "gameSetup": {
+        "gameSize": {
+            "blue": 1,
+            "red": 1,
+            "assassin": 1
+        },
+        "languageConfig": {
+            "DE": 2,
+            "EN": 1
+        }
+    },
+    "games": [
+        {
+            "game_index": 1,
+            "rounds": [
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+            ]
+        },
+        {
+            "game_index": 2,
+            "rounds": [
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+            ]
+        },
+        {
+            "game_index": 3,
+            "rounds": [
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+            ]
+        },
+        {
+            "game_index": 4,
+            "rounds": [
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                },
+                {
+                    "clue": "FAILED_FORMAT",
+                    "count": 0,
+                    "guesses": []
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+            ]
+        }
+    ],
+    "refinements": [
+        {
+            "after_game": 2,
+            "batch_data": [
+                {
+                    "game_index": 1,
+                    "initial_board": [
+                        {
+                            "word": "wasser",
+                            "group": "blue",
+                            "revealed": false
+                        },
+                        {
+                            "word": "bomb",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "kartographie",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+                    ]
+                },
+                {
+                    "game_index": 2,
+                    "initial_board": [
+                        {
+                            "word": "picknick",
+                            "group": "blue",
+                            "revealed": false
+                        },
+                        {
+                            "word": "tooth",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "plakatwand",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+                    ]
+                }
+            ],
+            "llm_reflection": "No valid LLM configuration found."
+        },
+        {
+            "after_game": 4,
+            "batch_data": [
+                {
+                    "game_index": 3,
+                    "initial_board": [
+                        {
+                            "word": "party",
+                            "group": "blue",
+                            "revealed": false
+                        },
+                        {
+                            "word": "horseshoe",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "schneebesen",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+                    ]
+                },
+                {
+                    "game_index": 4,
+                    "initial_board": [
+                        {
+                            "word": "party",
+                            "group": "blue",
+                            "revealed": false
+                        },
+                        {
+                            "word": "müll",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "thumb",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 2: Codemaster failed to format a clue. Turn skipped.",
+                        "- Turn 3: Codemaster failed to format a clue. Turn skipped."
+                    ]
+                }
+            ],
+            "llm_reflection": "No valid LLM configuration found."
+        }
+    ]
+}

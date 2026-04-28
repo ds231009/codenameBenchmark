@@ -1,0 +1,228 @@
+{
+    "modelDetailsCodemaster": {
+        "name": "GLM-4.7-UD-Q4_K_XL.gguf",
+        "role": "Codemaster",
+        "prompt": "You are playing a game of Codemaster in the role of the CODEMASTER.\nYou will receive a list of words on a board, each assigned to a group: <blue | red | assassin>.\n\nYour objective is to help your partner (the Guesser) identify all the \"blue\" words in as few\nturns as possible, without them guessing \"red\" words or the \"assassin\" word.\n\n### Rules & Scoring:\n* Your partner must guess the \"blue\" words based on the clue you provide.\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if your partner guesses a \"red\" word.\n* GAME OVER (You lose) if your partner guesses the \"assassin\" word.\n\n### Move Constraints:\n* You must provide exactly ONE clue per turn.\n* The clue word MUST be a valid English word.\n* The clue word MUST NOT share the same word stem as any word currently visible on the board.\n\n### Output Format:\nYou must reply with a single tuple containing your clue word and the number of board words it\nconnects to. Your partner will make their guess based on this clue. Count has to be >0.\nReturn ONLY this strict tuple format: (word, count)\n\nFew-shot examples:\n(ocean, 2)\n(greek, 1)",
+        "final_strategy": "1. **Categorical Precision**: Utilize category-based clues when the target is a definitive member of that group and no other board words share that classification.\n2. **Conservative Counting**: Default to a clue count of one when the semantic field of the clue might inadvertently touch upon non-target words, ensuring high probability of a safe turn.\n3. **Association Strength**: Select clues that form the strongest possible semantic link to the intended target to prevent ambiguity and guide the guesser decisively."
+    },
+    "modelDetailsGuesser": {
+        "name": "GLM-4.7-UD-Q4_K_XL.gguf",
+        "role": "Guesser",
+        "prompt": "You are playing a game of Codemaster in the role of the GUESSER.\nYou will receive a list of available words on a board and a clue from your partner (the Codemaster).\n\nYour objective is to guess the hidden \"blue\" words based on the Codemaster's clues in as few\nturns as possible, while avoiding \"red\" words and the \"assassin\" word.\n\n### Rules & Scoring:\n* +1 point for every correctly guessed \"blue\" word.\n* -1 point if you guess a \"red\" word.\n* GAME OVER (You lose) if you guess the \"assassin\" word.\n\n### Move Instructions:\n* You must perform a single move by making one guess at a time.\n* The word you guess MUST be chosen from the provided board.\n* The word MUST be spelled exactly as it appears on the board.\n* If you are unsure and want to end your turn, you can choose to pass.\n\n### Output Format:\nIf you want to guess a word, output ONLY the word enclosed in brackets:\n[word]\n\nIf you do not want to guess anything, output ONLY this exact string:\n[no guess]",
+        "final_strategy": ""
+    },
+    "gameSetup": {
+        "gameSize": {
+            "blue": 1,
+            "red": 1,
+            "assassin": 2
+        },
+        "languageConfig": {
+            "DE": 4
+        }
+    },
+    "games": [
+        {
+            "game_index": 1,
+            "rounds": [
+                {
+                    "clue": "concept",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "begriff",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (concept, 1). Guesser picked: 'begriff' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 2,
+            "rounds": [
+                {
+                    "clue": "japan",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "bonsai",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (japan, 1). Guesser picked: 'bonsai' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 3,
+            "rounds": [
+                {
+                    "clue": "painting",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "kunst",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (painting, 1). Guesser picked: 'kunst' (which was blue)."
+            ]
+        },
+        {
+            "game_index": 4,
+            "rounds": [
+                {
+                    "clue": "pastry",
+                    "count": 1,
+                    "guesses": [
+                        {
+                            "word": "schweinsohr",
+                            "group": "blue",
+                            "score": 1
+                        }
+                    ]
+                }
+            ],
+            "turn_history": [
+                "- Turn 1: You gave clue (pastry, 1). Guesser picked: 'schweinsohr' (which was blue)."
+            ]
+        }
+    ],
+    "refinements": [
+        {
+            "after_game": 2,
+            "batch_data": [
+                {
+                    "game_index": 1,
+                    "initial_board": [
+                        {
+                            "word": "begriff",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "birne",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "grad",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "unterschrift",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (concept, 1). Guesser picked: 'begriff' (which was blue)."
+                    ]
+                },
+                {
+                    "game_index": 2,
+                    "initial_board": [
+                        {
+                            "word": "bonsai",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "absatz",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "mond",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "bug",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (japan, 1). Guesser picked: 'bonsai' (which was blue)."
+                    ]
+                }
+            ],
+            "llm_reflection": "1. Prioritize clues that allow for multiple guesses whenever the semantic field is distinct and unambiguous to maximize board efficiency.\n2. When a word has ambiguous associations or overlaps with potential distractors, limit the clue count to one to ensure safety.\n3. Ensure the strength of the association between the clue and the intended target(s) significantly outweighs potential associations with opposing or penalty words."
+        },
+        {
+            "after_game": 4,
+            "batch_data": [
+                {
+                    "game_index": 3,
+                    "initial_board": [
+                        {
+                            "word": "kunst",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "nichtsnutz",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "gewebe",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "london",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (painting, 1). Guesser picked: 'kunst' (which was blue)."
+                    ]
+                },
+                {
+                    "game_index": 4,
+                    "initial_board": [
+                        {
+                            "word": "schweinsohr",
+                            "group": "blue",
+                            "revealed": true
+                        },
+                        {
+                            "word": "kreisverkehr",
+                            "group": "red",
+                            "revealed": false
+                        },
+                        {
+                            "word": "sport",
+                            "group": "assassin",
+                            "revealed": false
+                        },
+                        {
+                            "word": "jäger",
+                            "group": "assassin",
+                            "revealed": false
+                        }
+                    ],
+                    "turn_history": [
+                        "- Turn 1: You gave clue (pastry, 1). Guesser picked: 'schweinsohr' (which was blue)."
+                    ]
+                }
+            ],
+            "llm_reflection": "1. **Categorical Precision**: Utilize category-based clues when the target is a definitive member of that group and no other board words share that classification.\n2. **Conservative Counting**: Default to a clue count of one when the semantic field of the clue might inadvertently touch upon non-target words, ensuring high probability of a safe turn.\n3. **Association Strength**: Select clues that form the strongest possible semantic link to the intended target to prevent ambiguity and guide the guesser decisively."
+        }
+    ]
+}
