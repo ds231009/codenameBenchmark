@@ -13,7 +13,15 @@ readme = "README.md"
 requires-python = ">=3.9"
 
 
-dependencies = []
+dependencies = [
+    "colorama==0.4.6"
+]
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt"]
