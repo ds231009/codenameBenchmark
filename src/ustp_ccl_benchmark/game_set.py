@@ -210,7 +210,7 @@ class GameSet:
             "aggregateStats": self._aggregate_stats(),
         }
 
-        saveFile(file_path, result)
+        # saveFile(file_path, result)
         agg = result["aggregateStats"]
         log("saveStats", f"Win rate: {agg['win_rate']:.0%}, Avg score: {agg['avg_final_score']:.2f}")
 
