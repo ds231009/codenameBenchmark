@@ -1,18 +1,4 @@
-from colorama import Fore, Style, init
-init(autoreset=True)
-def log(colorVariable, *args, **kwargs):
-    colorMap = {
-        "Guesser": Fore.GREEN,
-        "Codemaster": Fore.LIGHTCYAN_EX,
-    }
-    print(
-        colorMap.get(colorVariable, Fore.WHITE)
-        + " "
-        + f"[{colorVariable}] "
-        + "     "
-        + ", ".join(map(str, (*args, *kwargs.values())))
-        + Style.RESET_ALL
-    )
+from ustp_ccl_benchmark.logging_utils import log
 
 CODEMASTER_PROMPT = """
 You are playing a game of Codemaster in the role of the CODEMASTER.
@@ -76,38 +62,38 @@ class LLM():
         Usage: model_guesser = LLM(llm_model, config, "Guesser")
         """
         self.base_llm = base_llm
-        
+
         # Dynamically fetch the model name from the wrapper if available
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
-        
+
         self.role = role
         self.prompt = CODEMASTER_PROMPT if role == "Codemaster" else GUESSER_PROMPT
-        
+
         # Initialize strategy attribute
         self.strategy_refinement = ""
-        
+
         # 1. Initialize the memory with the System prompt
         self.clearMemory()
-        
+
     def getLLMResponse(self, board, clue=None, feedback=None):
         # 2. Build the message for the current turn
         turn_content = f"This is the current board as an array: {board}"
-        
+
         if feedback:
             turn_content = f"FEEDBACK FROM LAST TURN: {feedback}\n\n" + turn_content
-        
+
         if self.role == "Guesser" and clue:
             turn_content = f"This is your partners clue: {clue}. The word hints towards the word your partner wants you to guess. The number implies the number of words the clue is meant for\n\n" + turn_content
-            
+
         # 3. Append the user's turn to the history
         self.history.append({
             'role': 'user',
             'content': turn_content
         })
-        
+
         log(self.role, f"Calling {self.role}... {board}")
         response = self.callLLM()
-        
+
         # 5. CRITICAL: Save the model's answer back into the history!
         self.history.append({
             'role': 'assistant',
@@ -115,10 +101,10 @@ class LLM():
         })
 
         return response
-    
+
     def writeRefinement(self, refinement_batch):
         """Generates a continuous learning strategy based on the past batch of games."""
-        
+
         # 1. Format the batch history into a readable transcript
         history_text = ""
         for game in refinement_batch:
@@ -142,30 +128,30 @@ class LLM():
 
         # 3. Create a temporary conversation just for this reflection
         temp_history = [
-            {'role': 'system', 'content': "You are an expert AI analyzing your past gameplay to build a better strategy."},
+            {'role': 'system', 'content': f"You are an expert AI analyzing your past gameplay as the {self.role} to build a better strategy."},
             {'role': 'user', 'content': reflection_prompt}
         ]
-        
+
         log(self.role, "Reflecting on batch to generate new strategy...")
-        
+
         # Pass the temp_history explicitly to callLLM
         new_strategy = self.callLLM(messages=temp_history)
-        
+
         # 4. Save the new strategy so clearMemory can inject it
         self.strategy_refinement = new_strategy
         log(self.role, f"New Strategy generated:\n{new_strategy}")
-        
+
         return new_strategy
 
     def clearMemory(self):
         """Wipes history but injects the learned strategy into the base prompt."""
         system_content = self.prompt
-        
+
         # If we have learned a strategy from writeRefinement, append it!
         if self.strategy_refinement:
             system_content += "\n\n### YOUR CONTINUOUS LEARNING STRATEGY (Follow these tips strictly):\n"
             system_content += self.strategy_refinement
-            
+
         self.history = [
             {'role': 'system', 'content': system_content}
         ]
@@ -174,7 +160,7 @@ class LLM():
     def callLLM(self, messages=None):
         # Allow passing custom messages for the reflection step, otherwise use history
         msgs = messages if messages is not None else self.history
-        
+
         # Translate our dict history into LangChain's native tuple format
         langchain_msgs = []
         for m in msgs:
@@ -184,29 +170,40 @@ class LLM():
                 langchain_msgs.append(("ai", m['content']))
             else:
                 langchain_msgs.append(("human", m['content']))
-        
-        # Attempt 1: If the wrapper exposes load_model() (like your OllamaLLM)
+
+        # Attempt 1: If the wrapper exposes load_model() (like your OllamaLLM/VLLM)
         # This is ideal because it passes the structured history directly to LangChain
         if hasattr(self.base_llm, 'load_model'):
             response = self.base_llm.load_model().invoke(langchain_msgs)
             return response.content
-            
+
         # Attempt 2: Fallback to the generic DeepEval generate() method
         elif hasattr(self.base_llm, 'generate'):
             # Flatten the structured history into a single string
             flat_prompt = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in msgs])
             return self.base_llm.generate(flat_prompt)
-        
+
         # Attempt 3: Debug mode bypass
         elif getattr(self.base_llm, 'type', None) == "debug":
             return input(f"\nDebug LLM Input for {self.role}: ")
-            
+
+        # FIX: this fallthrough used to return silently -- if base_llm had none
+        # of load_model/generate/a debug type, you'd just get a useless string
+        # back with zero indication anything was wrong.
+        log(self.role, "No valid LLM configuration found for base_llm.", level="error")
         return "No valid LLM configuration found."
-            
+
     def summary(self):
-        return {
+        summary_dict = {
             "name": self.modelName,
             "role": self.role,
             "prompt": self.prompt,
-            "final_strategy": self.strategy_refinement 
+            "final_strategy": self.strategy_refinement,
         }
+        # FIX: pulls vllm.py's token-usage/timing metrics (and qa_log) straight
+        # into the saved results, instead of them just sitting unused on the
+        # VLLM instance. Works with any base_llm that exposes get_metrics(),
+        # so it degrades gracefully for wrappers that don't.
+        if hasattr(self.base_llm, "get_metrics"):
+            summary_dict["llm_metrics"] = self.base_llm.get_metrics()
+        return summary_dict

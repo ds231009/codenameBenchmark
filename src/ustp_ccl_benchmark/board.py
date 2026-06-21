@@ -1,29 +1,7 @@
-from pathlib import Path
-from datetime import datetime
-import random
-import json
-import re
+"""Board state for a single Codenames game."""
+
 import copy
 
-from colorama import Fore, Style, init
-init(autoreset=True)
-
-def log(function, *args, **kwargs):
-    colorMap = {
-        "runGame": Fore.CYAN,
-        "getClue": Fore.BLUE,
-        "getGuesses": Fore.RED,
-        "getGuess": Fore.YELLOW,
-        "handleGuess": Fore.GREEN,
-        "saveStats": Fore.LIGHTCYAN_EX,
-    }
-    print(
-        colorMap[function]
-        + f"[Runner] [{function}] "
-        + "     "
-        + ", ".join(map(str, (*args, *kwargs.values())))
-        + Style.RESET_ALL
-    )
 
 class Board:
     def __init__(self, initial_words: list[dict]):
@@ -33,9 +11,9 @@ class Board:
         """Formats the board for the LLM prompts."""
         formatted_board = []
         for word in self.words:
-            if show_only_unrevealed and word["revealed"]: 
+            if show_only_unrevealed and word["revealed"]:
                 continue
-            
+
             if word["group"] in filter_by_group:
                 if structure == "detailed":
                     formatted_board.append(word)
@@ -46,6 +24,18 @@ class Board:
                 else:
                     raise ValueError(f"Not a valid structure: {structure}")
         return formatted_board
+
+    def remaining_words(self, groups=("blue", "red", "assassin")):
+        """Convenience wrapper around get_formatted: unrevealed word strings
+        for the given group(s). Pass a single group name (e.g. "blue") or
+        an iterable of group names; defaults to all three groups."""
+        if isinstance(groups, str):
+            groups = (groups,)
+        return self.get_formatted("word", show_only_unrevealed=True, filter_by_group=groups)
+
+    def is_group_cleared(self, group: str) -> bool:
+        """True once every word in `group` has been revealed (e.g. all blue found)."""
+        return len(self.remaining_words(group)) == 0
 
     def reveal_word(self, guessed_word: str):
         """Marks a word as revealed and returns it. Returns False if not found."""

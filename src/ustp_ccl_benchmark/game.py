@@ -1,187 +1,273 @@
-from pathlib import Path
-from datetime import datetime
-import random
-import json
+"""Runs a single Codenames game between a codemaster LLM and a guesser LLM.
+
+Tracks, per game: the outcome (win / assassin loss / timeout), the final
+score, and a breakdown of errors by role and type, plus raw "risk" counts
+(how many red/assassin words got guessed, how many passes happened, how
+much clue count was requested overall). Deliberately NOT collapsed into a
+single "risk score" -- that's an analysis-layer decision, so the raw
+counts are exposed and stage 2 can define risk however it wants.
+"""
+
 import re
-import copy
 
-from colorama import Fore, Style, init
-init(autoreset=True)
+from ustp_ccl_benchmark.logging_utils import log
+from ustp_ccl_benchmark.exceptions import (
+    ClueFormatError,
+    ClueRuleError,
+    GuessFormatError,
+    GuessRuleError,
+)
 
-def log(function, *args, **kwargs):
-    colorMap = {
-        "runGame": Fore.CYAN,
-        "getClue": Fore.BLUE,
-        "getGuesses": Fore.RED,
-        "getGuess": Fore.YELLOW,
-        "handleGuess": Fore.GREEN,
-        "saveStats": Fore.LIGHTCYAN_EX,
-    }
-    print(
-        colorMap[function]
-        + f"[Runner] [{function}] "
-        + "     "
-        + ", ".join(map(str, (*args, *kwargs.values())))
-        + Style.RESET_ALL
-    )
 
 class Game:
     def __init__(self, llm_codemaster, llm_guesser, board, group_config: dict):
-        self.modelCodemaster = llm_codemaster # Fixed missing assignment
+        self.modelCodemaster = llm_codemaster
         self.modelGuesser = llm_guesser
         self.board = board
         self.group_config = group_config
-        self.turn_history = [] 
+        self.turn_history = []
         self.current_game_rounds = []
 
+        self.stats = {
+            "errors": {
+                "codemaster_format_errors": 0,   # response didn't match (word, count)
+                "codemaster_rule_errors": 0,      # parsed fine, broke a game rule
+                "codemaster_clue_failures": 0,    # rounds where no valid clue ever landed
+                "guesser_format_errors": 0,       # response didn't match [word]
+                "guesser_rule_errors": 0,         # parsed fine, not a valid board word
+                "guesser_turn_forfeits": 0,       # guesser exhausted attempts mid-round
+            },
+            "play_counts": {
+                "blue_guesses": 0,
+                "red_guesses": 0,
+                "assassin_guesses": 0,
+                "passes": 0,
+                "total_clue_count_requested": 0,
+            },
+        }
+
     def play(self):
-        max_turns = sum(self.group_config.values()) # Fixed typo
-        
-        for turn in range(max_turns):
-            log("runGame", f"Playing turn {turn}")
-            
-            continueGame, round_data = self.runRound()
+        max_turns = sum(self.group_config.values())
+        outcome = "TIMEOUT"
+
+        for turn in range(1, max_turns + 1):
+            log("runGame", f"Playing turn {turn}/{max_turns}")
+
+            continueGame, round_data = self.runRound(turn)
             self.current_game_rounds.append(round_data)
-            
+
             # 1. Check for the WIN condition FIRST
-            # Fixed to use Board class
-            if len(self.board.get_formatted("word", show_only_unrevealed=True, filter_by_group=["blue"])) == 0:
+            if self.board.is_group_cleared("blue"):
                 log("runGame", "Board solved! All blue words found. (WIN)")
+                outcome = "WIN"
                 break
-                
+
             # 2. If not won, check if game was forced to end (Assassin hit)
             if not continueGame:
-                log("runGame", "Game over. Assassin hit! (LOSS)")
+                log("runGame", "Game over. Assassin hit! (LOSS)", level="error")
+                outcome = "LOSS_ASSASSIN"
                 break
-                
-        return self.current_game_rounds, self.turn_history
+        else:
+            # Loop ran out of turns without break-ing -- neither solved nor lost.
+            log("runGame", f"Reached max turns ({max_turns}) without a resolution. (TIMEOUT)", level="warning")
 
-    def runRound(self):
-        log("runGame", "--- Starting New Round ---")
-        
+        self.stats["outcome"] = outcome
+        self.stats["final_score"] = sum(g["score"] for r in self.current_game_rounds for g in r["guesses"])
+        self.stats["rounds_played"] = len(self.current_game_rounds)
+        self.stats["rounds_total_allowed"] = max_turns
+
+        return {
+            "rounds": self.current_game_rounds,
+            "turn_history": self.turn_history,
+            "stats": self.stats,
+        }
+
+    def runRound(self, round_number):
+        log("runGame", f"--- Starting Round {round_number} ---")
+
         if not self.turn_history:
             history_prompt = "This is the first turn. No guesses have been made yet."
         else:
             history_prompt = "HISTORY OF PREVIOUS TURNS IN THIS GAME:\n" + "\n".join(self.turn_history)
-        
-        clue, count = self.getClue(feedback=history_prompt)
-        
+
+        clue, count, clue_errors = self.getClue(feedback=history_prompt)
+
+        round_data = {
+            "round_number": round_number,
+            "clue": clue,
+            "clue_count_requested": count,
+            "clue_errors": clue_errors,
+            "guesses": [],
+        }
+
         if clue is None:
-            log("runGame", "--- Round Summary: Codemaster failed. Turn skipped. ---")
-            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: Codemaster failed to format a clue. Turn skipped.")
-            return True, {"clue": "FAILED_FORMAT", "count": 0, "guesses": []}
-            
+            log("runGame", "--- Round Summary: Codemaster failed. Turn skipped. ---", level="warning")
+            self.turn_history.append(f"- Turn {round_number}: Codemaster failed to format a clue. Turn skipped.")
+            return True, round_data
+
         guesses, continueGame = self.getGuesses(clue, count)
         log("runGame", f"--- Round Summary: Clue: ({clue}, {count}), Guesses made: {len(guesses)} ---")
-        
-        round_data = {"clue": clue, "count": count, "guesses": []}
-        guess_strings = [] 
-        
-        for g in guesses:
-            if g.get("guess"): 
-                word = g["guess"]["word"]
-                group = g["guess"]["group"]
-                score = g["score"]
-                round_data["guesses"].append({"word": word, "group": group, "score": score})
-                guess_strings.append(f"'{word}' (which was {group})")
+
+        round_data["guesses"] = guesses
+        guess_strings = [f"'{g['word']}' (which was {g['group']})" for g in guesses]
 
         if not guess_strings:
-            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: You gave clue ({clue}, {count}). Guesser passed.")
+            self.turn_history.append(f"- Turn {round_number}: You gave clue ({clue}, {count}). Guesser passed.")
         else:
-            self.turn_history.append(f"- Turn {len(self.turn_history) + 1}: You gave clue ({clue}, {count}). Guesser picked: {', '.join(guess_strings)}.")
+            self.turn_history.append(
+                f"- Turn {round_number}: You gave clue ({clue}, {count}). Guesser picked: {', '.join(guess_strings)}."
+            )
 
         return continueGame, round_data
 
     def getClue(self, feedback=None):
         max_attempts = 5
-        for attempt in range(max_attempts):
-            try: 
+        clue_errors = []
+
+        for attempt in range(1, max_attempts + 1):
+            try:
                 rawClue = self.modelCodemaster.getLLMResponse(
-                    self.board.get_formatted("codemaster", show_only_unrevealed=True), 
-                    feedback=feedback # Fixed variable scope issue
+                    self.board.get_formatted("codemaster", show_only_unrevealed=True),
+                    feedback=feedback
                 )
                 match = re.search(r'\(\s*([a-zA-Z]+)\s*,\s*(\d+)\s*\)', rawClue)
-                if not match: raise ValueError(f"Could not find (word, count) format in response: {rawClue}")
-                
+                if not match:
+                    raise ClueFormatError(f"Could not find (word, count) format in response: {rawClue}")
+
                 clue_word = match.group(1).upper()
                 count = int(match.group(2))
-                
-                # Fixed to use Board class
-                if clue_word in self.board.get_formatted("word", show_only_unrevealed=True):
-                    raise ValueError(f"Clue '{clue_word}' is in the word list.")
-                
-                log("getClue", f"Codemaster gave clue: ({clue_word}, {count})")
-                return clue_word, count
-            except Exception as e:
-                log("getClue", f"Attempt {attempt + 1} failed: {e}")
-                
-        log("getClue", "Codemaster failed to provide a valid clue. Wasting turn.")
-        return None, 0
+
+                if count <= 0:
+                    raise ClueRuleError(f"Clue count must be greater than 0, got {count}.")
+
+                if clue_word in self.board.remaining_words():
+                    raise ClueRuleError(f"Clue '{clue_word}' is a word currently on the board.")
+
+                log("getClue", f"Codemaster gave clue: ({clue_word}, {count}) [attempt {attempt}]")
+                self.stats["play_counts"]["total_clue_count_requested"] += count
+                return clue_word, count, clue_errors
+
+            except (ClueFormatError, ClueRuleError) as e:
+                clue_errors.append({"attempt": attempt, "type": type(e).__name__, "error": str(e)})
+                if isinstance(e, ClueFormatError):
+                    self.stats["errors"]["codemaster_format_errors"] += 1
+                else:
+                    self.stats["errors"]["codemaster_rule_errors"] += 1
+                log("getClue", f"Attempt {attempt} failed: {e}", level="warning")
+
+        self.stats["errors"]["codemaster_clue_failures"] += 1
+        log("getClue", "Codemaster failed to provide a valid clue after all attempts. Wasting turn.", level="error")
+        return None, 0, clue_errors
 
     def getGuesses(self, clue, count):
         guesses = []
         continueGame = True
+
         while count > 0:
-            guess = self.getGuess(clue)
-            if guess is None: 
+            guess_attempt = self.getGuess(clue)
+            outcome = guess_attempt["outcome"]
+
+            if outcome == "pass":
                 log("getGuesses", "Guesser ended their turn early.")
+                self.stats["play_counts"]["passes"] += 1
                 break
-            
+
+            if outcome == "forfeit":
+                # Guesser never produced a valid move within max_attempts.
+                break
+
+            guess = guess_attempt["result"]
             continueGame, continueRound, score = self.handleGuess(guess)
-            guesses.append({"guess": guess, "score": score})
-            if not continueRound or not continueGame: break
+            guesses.append({
+                "word": guess["word"],
+                "group": guess["group"],
+                "score": score,
+                "attempts": guess_attempt["attempts"],
+                "errors": guess_attempt["errors"],
+            })
+            if not continueRound or not continueGame:
+                break
             count -= 1
+
         return guesses, continueGame
 
     def getGuess(self, clue):
+        """Returns a dict: {"result": board word or None, "outcome": "guess"|"pass"|"forfeit",
+        "attempts": int, "errors": [...]}."""
         max_attempts = 5
-        error_feedback = "" 
-        for attempt in range(max_attempts):
+        guess_errors = []
+        error_feedback = ""
+
+        for attempt in range(1, max_attempts + 1):
             try:
                 prompt_clue = f"{clue}. WARNING: {error_feedback}" if error_feedback else clue
-                # Fixed to use Board class
-                rawGuess = self.modelGuesser.getLLMResponse(
-                    self.board.get_formatted("word", show_only_unrevealed=True), 
-                    prompt_clue
-                )
+                rawGuess = self.modelGuesser.getLLMResponse(self.board.remaining_words(), prompt_clue)
 
                 match = re.search(r'\[([^\]]*)\]', rawGuess)
-                if not match: raise ValueError(f"Could not find [word] format in response: {rawGuess}")
-                    
-                guess_word = match.group(1).upper()
-                if guess_word == "no guess" or rawGuess == "no guess":
+                if not match:
+                    raise GuessFormatError(f"Could not find [word] format in response: {rawGuess}")
+
+                guess_word = match.group(1).strip().upper()
+
+                # FIX: this used to compare an upper-cased guess_word against the
+                # lowercase literal "no guess", which could never match -- a
+                # deliberate [no guess] pass was silently mis-handled as an
+                # "invalid word" guess. Compared upper-to-upper now.
+                if guess_word == "NO GUESS":
                     log("getGuess", "Guesser chose to pass [no guess]")
-                    return None
-                
-                # Fixed to use Board class
-                if guess_word in self.board.get_formatted("word", show_only_unrevealed=True):
-                    log("getGuess", f"Guesser chose word: [{guess_word}]")
-                    return self.board.reveal_word(guess_word) # Fixed
-                else: raise ValueError(f"You guessed '{guess_word}', but it is not on the board!")
-            except ValueError as e:
-                log("getGuess", f"Attempt {attempt + 1} validation error: {e}")
-                error_feedback = str(e) 
-        return None 
-        
+                    return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors}
+
+                if guess_word in self.board.remaining_words():
+                    log("getGuess", f"Guesser chose word: [{guess_word}] [attempt {attempt}]")
+                    return {
+                        "result": self.board.reveal_word(guess_word),
+                        "outcome": "guess",
+                        "attempts": attempt,
+                        "errors": guess_errors,
+                    }
+
+                raise GuessRuleError(f"You guessed '{guess_word}', but it isn't a valid, unrevealed word on the board!")
+
+            except (GuessFormatError, GuessRuleError) as e:
+                guess_errors.append({"attempt": attempt, "type": type(e).__name__, "error": str(e)})
+                if isinstance(e, GuessFormatError):
+                    self.stats["errors"]["guesser_format_errors"] += 1
+                else:
+                    self.stats["errors"]["guesser_rule_errors"] += 1
+                error_feedback = str(e)
+                log("getGuess", f"Attempt {attempt} validation error: {e}", level="warning")
+
+        self.stats["errors"]["guesser_turn_forfeits"] += 1
+        log("getGuess", "Guesser exhausted all attempts without a valid move; turn forfeited.", level="error")
+        return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors}
+
     def handleGuess(self, guess):
         continueGame, continueRound, score = True, True, 0
         group = guess["group"]
         word = guess["word"]
-        
+
         if group == "blue":
             score = 1
+            self.stats["play_counts"]["blue_guesses"] += 1
             log("handleGuess", f"Guessed '{word}' correctly.")
         elif group == "red":
             score = -1
             continueRound = False
-            log("handleGuess", f"Guessed '{word}' wrong")
+            self.stats["play_counts"]["red_guesses"] += 1
+            log("handleGuess", f"Guessed '{word}' wrong", level="warning")
         elif group == "assassin":
             continueGame = False
             score = -25
-            log("handleGuess", f"Guessed '{word}' as assassin")
-            
-        # Fixed to use Board class
-        if len(self.board.get_formatted("codemaster", show_only_unrevealed=True, filter_by_group=["blue"])) == 0:
+            self.stats["play_counts"]["assassin_guesses"] += 1
+            log("handleGuess", f"Guessed '{word}' as assassin", level="error")
+        else:
+            # No group_config you're using today defines anything besides
+            # blue/red/assassin, but if a "neutral"/civilian group ever gets
+            # added, this makes sure it's visible instead of silently
+            # falling through with continueRound/continueGame left at True.
+            log("handleGuess", f"Unknown group '{group}' for word '{word}'; treating as a no-op guess.", level="warning")
+
+        if self.board.is_group_cleared("blue"):
             continueGame = False
-        
+
         return continueGame, continueRound, score
