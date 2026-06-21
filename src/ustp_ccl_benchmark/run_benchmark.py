@@ -6,17 +6,17 @@ from ustp_ccl_benchmark.config_dict import ConfigDict
 from ustp_ccl_benchmark.llm import LLM
 
 # The rest of the code remains exactly the same
-default_config: ConfigDict = {
-    "duration":         [{"rounds": 4, "refinement_after": 2}],
-    "language_config":  [{"DE": 4}],
-    "group_config":     [{"blue": 1, "red": 1, "assassin": 2}]
-}
-
 # default_config: ConfigDict = {
-#     "duration":         [{"rounds": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
-#     "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}],
-#     "group_config":     [{"blue": 4, "red": 4, "assassin": 2}]
+#     "duration":         [{"rounds": 4, "refinement_after": 2}],
+#     "language_config":  [{"DE": 4}],
+#     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}]
 # }
+
+default_config: ConfigDict = {
+    "duration":         [{"rounds": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
+    "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}, {"DE": 5, "EN": 5, "FR": 5}],
+    "group_config":     [{"blue": 4, "red": 4, "assassin": 2}, {"blue": 2, "red": 2, "assassin": 6}, {"blue": 5, "red": 5, "assassin": 0}]
+}
 
 def calculate_result(results: list[dict]) -> float:
     """Turns the collected GameSet results into a single benchmark score.
