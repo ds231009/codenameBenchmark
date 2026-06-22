@@ -130,7 +130,7 @@ class Game:
                     self.board.get_formatted("codemaster", show_only_unrevealed=True),
                     feedback=feedback
                 )
-                match = re.search(r'\(\s*([a-zA-Z]+)\s*,\s*(\d+)\s*\)', rawClue)
+                match = re.search(r'\(\s*([^\s,()]+)\s*,\s*(\d+)\s*\)', rawClue)
                 if not match:
                     raise ClueFormatError(f"Could not find (word, count) format in response: {rawClue}")
 

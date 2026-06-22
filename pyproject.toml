@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ustp_ccl_benchmark"
-version = "0.1.3"
+version = "0.1.4"
 description = "A custom game-based QA benchmark for LLM evaluation."
 authors = [
     {name = "Julian Pecho", email = "ds231009@ustp-students.at"}
