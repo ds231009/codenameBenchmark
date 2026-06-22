@@ -102,6 +102,16 @@ class LLM():
 
         return response
 
+    # Characters budgeted for the game history inside a reflection prompt.
+    # Assumes ~4 chars/token and leaves generous headroom for the fixed
+    # prompt template, the system message, and the model's output tokens.
+    # The model that triggered the original 400 error had an 8192-token
+    # context with max_tokens=4096, leaving only ~4096 tokens for input.
+    # Fixed template + system message is ~300 tokens -> ~3800 tokens free
+    # for history -> 3800 * 4 = 15200 chars. We use 10000 to stay clear.
+    # Raise this if you're running a larger-context model.
+    REFLECTION_HISTORY_CHAR_LIMIT = 10_000
+
     def writeRefinement(self, refinement_batch):
         """Generates a continuous learning strategy based on the past batch of games."""
 
@@ -114,30 +124,44 @@ class LLM():
             else:
                 history_text += "No turns played.\n"
 
-        # 2. The strict prompt for strategy reflection
+        # 2. Truncate history to the char budget so the reflection prompt
+        #    never overflows the model's context window. Oldest games are
+        #    preserved (they cover the most decisions). A visible marker is
+        #    appended so the model knows the transcript was cut and doesn't
+        #    hallucinate missing content.
+        limit = self.REFLECTION_HISTORY_CHAR_LIMIT
+        if len(history_text) > limit:
+            history_text = history_text[:limit]
+            # Walk back to the last complete line so we don't cut mid-sentence.
+            history_text = history_text[:history_text.rfind("\n") + 1]
+            history_text += "\n[... transcript truncated to fit context window ...]"
+            log(self.role, f"Reflection history truncated to {limit} chars.", level="warning")
+
+        # 3. The strict prompt for strategy reflection
         reflection_prompt = (
             "You have just completed a batch of Codenames games. Here is the transcript of your clues and your partner's guesses:\n"
             f"{history_text}\n"
             "Analyze your performance. Did the Guesser misunderstand your clues? Did they hit penalty words?\n"
             "Based on this analysis, formulate a short list of strategic rules for yourself to improve your future performance.\n\n"
             "CRITICAL RULES FOR THIS REFLECTION:\n"
-            "1. Focus ONLY on abstract strategy (e.g., risk management, specificity of clues, clue counts, word types).\n"
-            "2. DO NOT mention any specific words from the previous games, as the next boards will have completely different words.\n"
-            "3. Output ONLY the strategic guidelines. This exact output will become your system instructions for the next rounds."
+            "1. Be concise -- output no more than 5 bullet points.\n"
+            "2. Focus ONLY on abstract strategy (e.g., risk management, specificity of clues, clue counts, word types).\n"
+            "3. DO NOT mention any specific words from the previous games, as the next boards will have completely different words.\n"
+            "4. Output ONLY the strategic guidelines. This exact output will become your system instructions for the next rounds."
         )
 
-        # 3. Create a temporary conversation just for this reflection
+        # 4. Create a temporary conversation just for this reflection
         temp_history = [
-            {'role': 'system', 'content': f"You are an expert AI analyzing your past gameplay as the {self.role} to build a better strategy."},
+            {'role': 'system', 'content': f"You are an expert AI analyzing your past gameplay as the {self.role} to build a better strategy. Be concise."},
             {'role': 'user', 'content': reflection_prompt}
         ]
 
-        log(self.role, "Reflecting on batch to generate new strategy...")
+        log(self.role, f"Reflecting on batch ({len(history_text)} chars of history)...")
 
         # Pass the temp_history explicitly to callLLM
         new_strategy = self.callLLM(messages=temp_history)
 
-        # 4. Save the new strategy so clearMemory can inject it
+        # 5. Save the new strategy so clearMemory can inject it
         self.strategy_refinement = new_strategy
         log(self.role, f"New Strategy generated:\n{new_strategy}")
 
@@ -187,9 +211,6 @@ class LLM():
         elif getattr(self.base_llm, 'type', None) == "debug":
             return input(f"\nDebug LLM Input for {self.role}: ")
 
-        # FIX: this fallthrough used to return silently -- if base_llm had none
-        # of load_model/generate/a debug type, you'd just get a useless string
-        # back with zero indication anything was wrong.
         log(self.role, "No valid LLM configuration found for base_llm.", level="error")
         return "No valid LLM configuration found."
 
@@ -200,10 +221,6 @@ class LLM():
             "prompt": self.prompt,
             "final_strategy": self.strategy_refinement,
         }
-        # FIX: pulls vllm.py's token-usage/timing metrics (and qa_log) straight
-        # into the saved results, instead of them just sitting unused on the
-        # VLLM instance. Works with any base_llm that exposes get_metrics(),
-        # so it degrades gracefully for wrappers that don't.
         if hasattr(self.base_llm, "get_metrics"):
             summary_dict["llm_metrics"] = self.base_llm.get_metrics()
         return summary_dict
