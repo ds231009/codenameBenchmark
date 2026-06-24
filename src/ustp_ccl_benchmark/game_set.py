@@ -37,25 +37,15 @@ class GameSet:
         total_board_size = sum(self.group_config.values())
         lang_ratio_sum = sum(self.language_config.values())
 
-        # 1. Proportional Allocation (No more crashing on bad ratios)
-        words_per_lang = {}
-        remaining_words = total_board_size
+        # Upscale the multiplier using ceiling division so we always draw AT LEAST 
+        # enough words to cover the board size. 
+        # e.g., board size 5, ratio 10 -> multiplier 1 -> draws 10 words.
+        multiplier = (total_board_size + lang_ratio_sum - 1) // lang_ratio_sum
 
         if total_board_size % lang_ratio_sum != 0:
-            log("runGame", f"Warning: Board size ({total_board_size}) and language ratio sum ({lang_ratio_sum}) aren't cleanly divisible. Auto-adjusting language count to fit the board.")
+            upscaled_pool_size = lang_ratio_sum * multiplier
+            log("runGame", f"Warning: Board size ({total_board_size}) and language ratio sum ({lang_ratio_sum}) aren't cleanly divisible. Upscaling pool to {upscaled_pool_size} words.")
 
-        for lang, count in self.language_config.items():
-            # Allocate proportionally and round to nearest whole number
-            allocated = round((count / lang_ratio_sum) * total_board_size)
-            words_per_lang[lang] = allocated
-            remaining_words -= allocated
-
-        # Catch any off-by-one errors caused by rounding and add them to the dominant language
-        if remaining_words != 0:
-            dominant_lang = max(self.language_config, key=self.language_config.get)
-            words_per_lang[dominant_lang] += remaining_words
-
-        multiplier = total_board_size // lang_ratio_sum
         words_per_lang = {lang: count * multiplier for lang, count in self.language_config.items()}
 
         # 2. Load only the necessary wordlists into memory
@@ -66,14 +56,11 @@ class GameSet:
             with open(wordlist_path, 'r', encoding="utf-8") as file:
                 loaded_wordlists[lang] = [line.strip() for line in file if line.strip()]
 
-            # FIX: previously unvalidated -- if a wordlist was smaller than
-            # the per-board requirement, random.randrange() would eventually
-            # crash on an empty range deep inside the board-generation loop
-            # with a confusing error. Fail fast here instead.
+            # Fail fast if we don't have enough words in the file to fulfill the upscaled request
             if len(loaded_wordlists[lang]) < words_per_lang[lang]:
                 raise ValueError(
                     f"Wordlist '{lang}' has only {len(loaded_wordlists[lang])} words, but each board "
-                    f"needs {words_per_lang[lang]}. Add more words or lower the language ratio."
+                    f"needs {words_per_lang[lang]} (due to upscaling). Add more words or lower the language ratio."
                 )
 
         boards = []
@@ -143,11 +130,7 @@ class GameSet:
             if (game_index + 1) % refinement_step == 0:
                 log("runGame", "--- BREAK TIME: Refinement ---")
 
-                # FIX: previously only the codemaster reflected on the batch
-                # (writeRefinement was never called on modelGuesser), so the
-                # guesser's memory got wiped at every refinement step but
-                # never gained a strategy to replace it with. Both roles now
-                # get to reflect on the same batch.
+                # Both roles get to reflect on the same batch.
                 codemaster_reflection = self.modelCodemaster.writeRefinement(self.refinement_batch)
                 guesser_reflection = self.modelGuesser.writeRefinement(self.refinement_batch)
 
@@ -225,7 +208,6 @@ class GameSet:
             "aggregateStats": self._aggregate_stats(),
         }
 
-        # saveFile(file_path, result)
         agg = result["aggregateStats"]
         log("saveStats", f"Win rate: {agg['win_rate']:.0%}, Avg score: {agg['avg_final_score']:.2f}")
 
@@ -243,13 +225,6 @@ def createDirectory(benchmarkID, modelCodemaster, modelGuesser, run_signature):
     shortModelCodemaster = modelCodemaster.replace(".", "").replace(":", "")
     shortModelGuesser = modelGuesser.replace(".", "").replace(":", "")
 
-    # FIX: the filename used to be just benchmarkID + model names. Since
-    # benchmarkID defaults to "default" and run_benchmark.py never set it,
-    # *every* combination in a parameter sweep (different durations,
-    # language ratios, group sizes) wrote to the exact same path -- each
-    # new run silently overwrote the previous one's results. run_signature
-    # bakes the config into the filename, and the timestamp protects
-    # against re-running the identical config twice.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"resultsTest_{benchmarkID}_{shortModelCodemaster}_{shortModelGuesser}_{run_signature}_{timestamp}.json"
     return results_dir / filename
