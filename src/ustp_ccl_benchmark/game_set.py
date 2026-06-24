@@ -30,59 +30,79 @@ class GameSet:
         self.refinement_batch = []
 
     def _generate_boards(self):
-        """Reads the wordlists and generates the initial board data for all rounds based on language ratios."""
+        """Generates the initial board data for all rounds.
+
+        language_config values are WORD COUNTS - they define both the total
+        board size and how many words to draw from each language.
+            {"DE": 10}         -> 10 words, all German
+            {"DE": 5, "EN": 5} -> 10 words, 5 German + 5 English
+
+        group_config values are RATIOS - they define the proportion of each
+        group relative to the total board size.
+            {"blue": 2, "red": 2, "assassin": 1} with 10 words
+            -> group_multiplier = 10 / 5 = 2
+            -> blue=4, red=4, assassin=2
+
+        sum(language_config) must be divisible by sum(group_config).
+        """
         base_dir = Path(__file__).resolve().parent
 
-        # 1. Calculate how many words we need per language for a single board
-        total_board_size = sum(self.group_config.values())
-        lang_ratio_sum = sum(self.language_config.values())
+        # 1. Board size is driven by language_config (total words to draw).
+        total_board_size = sum(self.language_config.values())
+        group_ratio_sum  = sum(self.group_config.values())
 
-        # Upscale the multiplier using ceiling division so we always draw AT LEAST 
-        # enough words to cover the board size. 
-        # e.g., board size 5, ratio 10 -> multiplier 1 -> draws 10 words.
-        multiplier = (total_board_size + lang_ratio_sum - 1) // lang_ratio_sum
+        if total_board_size % group_ratio_sum != 0:
+            raise ValueError(
+                f"Board size ({total_board_size}) from language_config {self.language_config} "
+                f"is not divisible by the group ratio sum ({group_ratio_sum}) from "
+                f"group_config {self.group_config}. Adjust either config so they divide evenly."
+            )
 
-        if total_board_size % lang_ratio_sum != 0:
-            upscaled_pool_size = lang_ratio_sum * multiplier
-            log("runGame", f"Warning: Board size ({total_board_size}) and language ratio sum ({lang_ratio_sum}) aren't cleanly divisible. Upscaling pool to {upscaled_pool_size} words.")
+        group_multiplier    = total_board_size // group_ratio_sum
+        scaled_group_counts = {k: v * group_multiplier for k, v in self.group_config.items()}
 
-        words_per_lang = {lang: count * multiplier for lang, count in self.language_config.items()}
+        log("runGame", (
+            f"Board layout: {total_board_size} words | "
+            f"groups {scaled_group_counts} | "
+            f"languages {self.language_config}"
+        ))
 
-        # 2. Load only the necessary wordlists into memory
+        # 2. language_config values are used directly as word counts.
+        words_per_lang = dict(self.language_config)
+
+        # 3. Load only the necessary wordlists into memory
         loaded_wordlists = {}
-        for lang in self.language_config.keys():
+        for lang, needed in words_per_lang.items():
             wordlist_path = base_dir / "wordlists" / f"wordlist{lang.upper()}.txt"
 
             with open(wordlist_path, 'r', encoding="utf-8") as file:
                 loaded_wordlists[lang] = [line.strip() for line in file if line.strip()]
 
-            # Fail fast if we don't have enough words in the file to fulfill the upscaled request
-            if len(loaded_wordlists[lang]) < words_per_lang[lang]:
+            if len(loaded_wordlists[lang]) < needed:
                 raise ValueError(
-                    f"Wordlist '{lang}' has only {len(loaded_wordlists[lang])} words, but each board "
-                    f"needs {words_per_lang[lang]} (due to upscaling). Add more words or lower the language ratio."
+                    f"Wordlist '{lang}' has only {len(loaded_wordlists[lang])} words "
+                    f"but the board needs {needed}. Add more words or reduce the count."
                 )
 
         boards = []
         total_games = self.duration["rounds"]
 
-        # 3. Generate each board
+        # 4. Generate each board
         for _ in range(total_games):
             board_pool = []
 
-            # Step A: Gather the required number of words from each language for this board
+            # Step A: Draw the required number of words from each language
             for lang, target_count in words_per_lang.items():
                 lang_words_copy = loaded_wordlists[lang].copy()
                 for _ in range(target_count):
-                    # Pop randomly to avoid duplicates of the same language within the same board
                     board_pool.append(lang_words_copy.pop(random.randrange(len(lang_words_copy))))
 
-            # Step B: Shuffle the combined word pool so languages are assigned to groups randomly
+            # Step B: Shuffle so languages are spread across groups randomly
             random.shuffle(board_pool)
 
-            # Step C: Assign words to their respective groups (blue, red, etc.)
+            # Step C: Assign words to groups using the scaled counts
             board_layout = []
-            for group, count in self.group_config.items():
+            for group, count in scaled_group_counts.items():
                 for _ in range(int(count)):
                     word_str = board_pool.pop()  # Pop from the mixed, randomized pool
                     board_layout.append({

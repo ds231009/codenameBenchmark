@@ -69,6 +69,16 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
             print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
             is_valid = False
 
+        # 4. Cross-validate: sum(language_config) must be divisible by sum(group_config).
+        #    language_config drives total board size; group_config is a ratio.
+        #    e.g. {"DE": 10} with blue:red:assassin=2:2:1 -> 10/5=2 -> blue=4, red=4, assassin=2.
+        elif sum(lang.values()) % sum(grp.values()) != 0:
+            print(
+                f"Skipped incompatible combo: language total ({sum(lang.values())}) from {lang} "
+                f"is not divisible by group ratio sum ({sum(grp.values())}) from {grp}."
+            )
+            is_valid = False
+
         if is_valid:
             valid_combinations.append(run_kwargs)
 
