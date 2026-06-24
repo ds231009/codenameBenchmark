@@ -78,7 +78,6 @@ class LLM():
             )
 
         self.history.append({'role': 'user', 'content': turn_content})
-        log(self.role, f"Calling {self.role}...", level="debug")
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
         return response
@@ -183,7 +182,6 @@ class LLM():
             try:
                 new_strategy = self.callLLM(messages=temp_history)
                 self.strategy_refinement = new_strategy
-                log(self.role, f"Strategy updated:\n{new_strategy}")
                 return new_strategy
 
             except Exception as e:

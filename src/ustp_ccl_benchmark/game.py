@@ -51,25 +51,21 @@ class Game:
         outcome = "TIMEOUT"
 
         for turn in range(1, max_turns + 1):
-            log("runGame", f"Playing turn {turn}/{max_turns}", level="debug")
-
             continueGame, round_data = self.runRound(turn)
             self.current_game_rounds.append(round_data)
 
             # 1. Check for the WIN condition FIRST
             if self.board.is_group_cleared("blue"):
-                log("runGame", "Board solved! All blue words found. (WIN)")
                 outcome = "WIN"
                 break
 
             # 2. If not won, check if game was forced to end (Assassin hit)
             if not continueGame:
-                log("runGame", "Game over. Assassin hit! (LOSS)", level="error")
                 outcome = "LOSS_ASSASSIN"
                 break
         else:
             # Loop ran out of turns without break-ing -- neither solved nor lost.
-            log("runGame", f"Reached max turns ({max_turns}) without a resolution. (TIMEOUT)", level="warning")
+            pass
 
         self.stats["outcome"] = outcome
         self.stats["final_score"] = sum(g["score"] for r in self.current_game_rounds for g in r["guesses"])
@@ -83,8 +79,6 @@ class Game:
         }
 
     def runRound(self, round_number):
-        log("runGame", f"--- Starting Round {round_number} ---", level="debug")
-
         if not self.turn_history:
             history_prompt = "This is the first turn. No guesses have been made yet."
         else:
@@ -101,12 +95,10 @@ class Game:
         }
 
         if clue is None:
-            log("runGame", "--- Round Summary: Codemaster failed. Turn skipped. ---", level="warning")
             self.turn_history.append(f"- Turn {round_number}: Codemaster failed to format a clue. Turn skipped.")
             return True, round_data
 
         guesses, continueGame = self.getGuesses(clue, count)
-        log("runGame", f"--- Round Summary: Clue: ({clue}, {count}), Guesses made: {len(guesses)} ---", level="debug")
 
         round_data["guesses"] = guesses
         guess_strings = [f"'{g['word']}' (which was {g['group']})" for g in guesses]
@@ -143,7 +135,6 @@ class Game:
                 if clue_word in self.board.remaining_words():
                     raise ClueRuleError(f"Clue '{clue_word}' is a word currently on the board.")
 
-                log("getClue", f"Codemaster gave clue: ({clue_word}, {count}) [attempt {attempt}]", level="debug")
                 self.stats["play_counts"]["total_clue_count_requested"] += count
                 return clue_word, count, clue_errors
 
@@ -153,10 +144,8 @@ class Game:
                     self.stats["errors"]["codemaster_format_errors"] += 1
                 else:
                     self.stats["errors"]["codemaster_rule_errors"] += 1
-                log("getClue", f"Attempt {attempt} failed: {e}", level="warning")
 
         self.stats["errors"]["codemaster_clue_failures"] += 1
-        log("getClue", "Codemaster failed to provide a valid clue after all attempts. Wasting turn.", level="error")
         return None, 0, clue_errors
 
     def getGuesses(self, clue, count):
@@ -168,7 +157,6 @@ class Game:
             outcome = guess_attempt["outcome"]
 
             if outcome == "pass":
-                log("getGuesses", "Guesser ended their turn early.", level="debug")
                 self.stats["play_counts"]["passes"] += 1
                 break
 
@@ -214,11 +202,9 @@ class Game:
                 # deliberate [no guess] pass was silently mis-handled as an
                 # "invalid word" guess. Compared upper-to-upper now.
                 if guess_word == "NO GUESS":
-                    log("getGuess", "Guesser chose to pass [no guess]", level="debug")
                     return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors}
 
                 if guess_word in self.board.remaining_words():
-                    log("getGuess", f"Guesser chose word: [{guess_word}] [attempt {attempt}]", level="debug")
                     return {
                         "result": self.board.reveal_word(guess_word),
                         "outcome": "guess",
@@ -235,10 +221,8 @@ class Game:
                 else:
                     self.stats["errors"]["guesser_rule_errors"] += 1
                 error_feedback = str(e)
-                log("getGuess", f"Attempt {attempt} validation error: {e}", level="warning")
 
         self.stats["errors"]["guesser_turn_forfeits"] += 1
-        log("getGuess", "Guesser exhausted all attempts without a valid move; turn forfeited.", level="error")
         return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors}
 
     def handleGuess(self, guess):
@@ -249,23 +233,16 @@ class Game:
         if group == "blue":
             score = 1
             self.stats["play_counts"]["blue_guesses"] += 1
-            log("handleGuess", f"Guessed '{word}' correctly.", level="debug")
         elif group == "red":
             score = -1
             continueRound = False
             self.stats["play_counts"]["red_guesses"] += 1
-            log("handleGuess", f"Guessed '{word}' wrong", level="warning")
         elif group == "assassin":
             continueGame = False
             score = -25
             self.stats["play_counts"]["assassin_guesses"] += 1
-            log("handleGuess", f"Guessed '{word}' as assassin", level="error")
         else:
-            # No group_config you're using today defines anything besides
-            # blue/red/assassin, but if a "neutral"/civilian group ever gets
-            # added, this makes sure it's visible instead of silently
-            # falling through with continueRound/continueGame left at True.
-            log("handleGuess", f"Unknown group '{group}' for word '{word}'; treating as a no-op guess.", level="warning")
+            pass
 
         if self.board.is_group_cleared("blue"):
             continueGame = False

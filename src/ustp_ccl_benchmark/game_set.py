@@ -149,8 +149,6 @@ class GameSet:
 
             # Refinement Logic
             if (game_index + 1) % refinement_step == 0:
-                log("runGame", "--- BREAK TIME: Refinement ---")
-
                 # Both roles get to reflect on the same batch.
                 codemaster_reflection = self.modelCodemaster.writeRefinement(self.refinement_batch)
                 guesser_reflection = self.modelGuesser.writeRefinement(self.refinement_batch)
