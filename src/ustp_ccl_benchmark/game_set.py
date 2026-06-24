@@ -60,12 +60,6 @@ class GameSet:
         words_per_lang = allocate_proportional(total_board_size, self.language_config)
         scaled_group_counts = allocate_proportional(total_board_size, self.group_config)
 
-        log("runGame", (
-            f"Board layout: {total_board_size} words | "
-            f"groups {scaled_group_counts} | "
-            f"languages {words_per_lang}"
-        ))
-
         # Load only the necessary wordlists into memory
         loaded_wordlists = {}
         for lang, needed in words_per_lang.items():
@@ -130,7 +124,6 @@ class GameSet:
         refinement_step = self.duration.get("refinement_after") or (total_games + 1)
 
         for game_index in tqdm(range(total_games), desc=f"Playing Benchmark ({self.benchmarkID})", unit="game"):
-            log("runGame", f"=== STARTING GAME {game_index + 1} OF {total_games} ===", level="debug")
 
             # 2. Instantiate a fresh Board object for this specific round
             raw_board_data = self.all_boards_data[game_index]

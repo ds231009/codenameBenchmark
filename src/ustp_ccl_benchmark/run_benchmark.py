@@ -172,15 +172,19 @@ def run_benchmark(
         print("No valid configurations found to run. Exiting early.")
         return 0.0, {"completed_runs": 0, "results": []}
 
+    # 1. Calculate and log the total valid combinations
+    total_runs = len(valid_combinations)
+    print(f"\n=== BENCHMARK SETUP ===")
+    print(f"Found {total_runs} valid combinations to run.")
+    print(f"=======================\n")
+
     results = []
 
-    # FIX: the previous version stored valid_combinations but then re-ran
-    # itertools.product() in the loop, bypassing the validation entirely.
-    # We now iterate directly over valid_combinations.
     for combo_index, run_kwargs in enumerate(valid_combinations, start=1):
         run_id = f"{benchmark_id}_{combo_index:02d}"
 
-        print(f"Running Game {run_id} with: {run_kwargs}")
+        # 2. Update the print statement to show progress out of the total
+        print(f"Running Game {combo_index}/{total_runs} (ID: {run_id}) with: {run_kwargs}")
 
         game_instance = GameSet(
             llm=LLM(llm_model, {}, "Codemaster"),
@@ -195,5 +199,8 @@ def run_benchmark(
         results.append(game_result)
 
     score = calculate_result(results)
+
+    print(f"\n=== BENCHMARK COMPLETE ===")
+    print(f"Successfully ran {total_runs} configurations. Final Score: {score}")
 
     return score, {"completed_runs": len(results), "results": results}
