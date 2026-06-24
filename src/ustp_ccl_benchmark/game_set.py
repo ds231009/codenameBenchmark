@@ -37,8 +37,23 @@ class GameSet:
         total_board_size = sum(self.group_config.values())
         lang_ratio_sum = sum(self.language_config.values())
 
+        # 1. Proportional Allocation (No more crashing on bad ratios)
+        words_per_lang = {}
+        remaining_words = total_board_size
+
         if total_board_size % lang_ratio_sum != 0:
-            raise ValueError(f"Board size ({total_board_size}) must be cleanly divisible by the language ratio sum ({lang_ratio_sum}).")
+            log("runGame", f"Warning: Board size ({total_board_size}) and language ratio sum ({lang_ratio_sum}) aren't cleanly divisible. Auto-adjusting language count to fit the board.")
+
+        for lang, count in self.language_config.items():
+            # Allocate proportionally and round to nearest whole number
+            allocated = round((count / lang_ratio_sum) * total_board_size)
+            words_per_lang[lang] = allocated
+            remaining_words -= allocated
+
+        # Catch any off-by-one errors caused by rounding and add them to the dominant language
+        if remaining_words != 0:
+            dominant_lang = max(self.language_config, key=self.language_config.get)
+            words_per_lang[dominant_lang] += remaining_words
 
         multiplier = total_board_size // lang_ratio_sum
         words_per_lang = {lang: count * multiplier for lang, count in self.language_config.items()}
