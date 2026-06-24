@@ -132,7 +132,7 @@ class GameSet:
             initial_board_state = current_board.get_formatted("detailed", filter_by_group=["blue", "red", "assassin"])
 
             # 3. Pass the Board and group_config into the Game
-            single_game = Game(self.modelCodemaster, self.modelGuesser, current_board, self.group_config)
+            single_game = Game(self.modelCodemaster, self.modelGuesser, current_board, self.group_config, self.duration)
             game_result = single_game.play()
 
             self.all_games_results.append({

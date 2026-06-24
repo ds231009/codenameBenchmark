@@ -20,11 +20,12 @@ from ustp_ccl_benchmark.exceptions import (
 
 
 class Game:
-    def __init__(self, llm_codemaster, llm_guesser, board, group_config: dict):
+    def __init__(self, llm_codemaster, llm_guesser, board, group_config: dict, duration: dict):
         self.modelCodemaster = llm_codemaster
         self.modelGuesser = llm_guesser
         self.board = board
         self.group_config = group_config
+        self.duration = duration
         self.turn_history = []
         self.current_game_rounds = []
 
@@ -47,7 +48,7 @@ class Game:
         }
 
     def play(self):
-        max_turns = sum(self.group_config.values())
+        max_turns = self.duration.get("rounds") or sum(self.group_config.values())
         outcome = "TIMEOUT"
 
         for turn in range(1, max_turns + 1):
