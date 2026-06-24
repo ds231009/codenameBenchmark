@@ -19,10 +19,14 @@ default_config: ConfigDict = {
 
 
 def get_valid_combinations(config: ConfigDict) -> list[dict]:
-    """Generates all config combinations and filters out the invalid ones."""
+    """Generates all config combinations and filters out structurally invalid ones.
+
+    Divisibility (board size vs language ratio) is intentionally NOT checked
+    here -- game_set._generate_boards() upscales the word pool via ceiling
+    division so any ratio works without skipping the combination.
+    """
     required_keys = ["duration", "language_config", "group_config"]
-    
-    # Check for missing top-level keys first
+
     for key in required_keys:
         if key not in config or not isinstance(config[key], list) or not config[key]:
             print(f"CRITICAL: Missing or empty required config key: '{key}'. Aborting benchmark.")
@@ -30,51 +34,46 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
 
     config_keys = list(config.keys())
     config_values = list(config.values())
-    
+
     valid_combinations = []
 
-    # Evaluate each combination individually
     for combo in itertools.product(*config_values):
         run_kwargs = dict(zip(config_keys, combo))
         is_valid = True
 
-        d = run_kwargs["duration"]
+        d    = run_kwargs["duration"]
         lang = run_kwargs["language_config"]
-        grp = run_kwargs["group_config"]
+        grp  = run_kwargs["group_config"]
 
         # 1. Validate Duration
         if "rounds" not in d or not isinstance(d["rounds"], int) or d["rounds"] <= 0:
             print(f"Skipped combo: Invalid duration config {d}")
             is_valid = False
-        elif "refinement_after" in d and (not isinstance(d["refinement_after"], int) or d["refinement_after"] <= 0):
+        elif "refinement_after" in d and (
+            not isinstance(d["refinement_after"], int) or d["refinement_after"] <= 0
+        ):
             print(f"Skipped combo: Invalid refinement config in {d}")
             is_valid = False
 
         # 2. Validate Languages
-        elif not lang or not all(isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()):
+        elif not lang or not all(
+            isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()
+        ):
             print(f"Skipped combo: Invalid language config {lang}")
             is_valid = False
 
-        # 3. Validate Groups
-        elif "blue" not in grp or "red" not in grp or not all(isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()):
+        # 3. Validate Groups (must have blue and red; all counts non-negative integers)
+        elif "blue" not in grp or "red" not in grp or not all(
+            isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()
+        ):
             print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
             is_valid = False
-
-        # 4. Cross-validate divisibility constraint
-        else:
-            total_board_size = sum(grp.values())
-            lang_ratio_sum = sum(lang.values())
-            if total_board_size % lang_ratio_sum != 0:
-                print(
-                    f"Skipped incompatible combo: Board size ({total_board_size}) from {grp} "
-                    f"not divisible by language ratio sum ({lang_ratio_sum}) from {lang}."
-                )
-                is_valid = False
 
         if is_valid:
             valid_combinations.append(run_kwargs)
 
     return valid_combinations
+
 
 def calculate_result(results: list[dict]) -> float:
     """Composite benchmark score across all runs in a sweep, range [0, 1].
@@ -115,8 +114,8 @@ def calculate_result(results: list[dict]) -> float:
     perf_scores, speed_scores, reliability_scores = [], [], []
 
     for run in results:
-        agg = run.get("aggregateStats", {})
-        games = run.get("games", [])
+        agg        = run.get("aggregateStats", {})
+        games      = run.get("games", [])
         blue_count = run.get("run_kwargs", {}).get("group_config", {}).get("blue", 1)
 
         # --- Performance ---
@@ -127,20 +126,17 @@ def calculate_result(results: list[dict]) -> float:
         if games:
             speed_ratios = [
                 g["stats"]["rounds_played"] / max(g["stats"]["rounds_total_allowed"], 1)
-                for g in games
-                if g.get("stats")
+                for g in games if g.get("stats")
             ]
             speed_scores.append(1.0 - (sum(speed_ratios) / len(speed_ratios)) if speed_ratios else 0.0)
         else:
             speed_scores.append(0.0)
 
         # --- Reliability ---
-        err = agg.get("error_totals", {})
+        err          = agg.get("error_totals", {})
         total_errors = sum(err.values())
-        total_rounds = sum(
-            g["stats"].get("rounds_played", 0) for g in games if g.get("stats")
-        )
-        error_rate = total_errors / max(total_rounds, 1)
+        total_rounds = sum(g["stats"].get("rounds_played", 0) for g in games if g.get("stats"))
+        error_rate   = total_errors / max(total_rounds, 1)
         reliability_scores.append(max(0.0, 1.0 - error_rate))
 
     def mean(lst):
@@ -173,13 +169,12 @@ def run_benchmark(
         print("No valid configurations found to run. Exiting early.")
         return 0.0, {"completed_runs": 0, "results": []}
 
-    config_keys = active_config.keys()
-    config_values = active_config.values()
-
     results = []
 
-    for combo_index, combination in enumerate(itertools.product(*config_values), start=1):
-        run_kwargs = dict(zip(config_keys, combination))
+    # FIX: the previous version stored valid_combinations but then re-ran
+    # itertools.product() in the loop, bypassing the validation entirely.
+    # We now iterate directly over valid_combinations.
+    for combo_index, run_kwargs in enumerate(valid_combinations, start=1):
         run_id = f"{benchmark_id}_{combo_index:02d}"
 
         print(f"Running Game {run_id} with: {run_kwargs}")
@@ -192,7 +187,7 @@ def run_benchmark(
         )
 
         game_result = game_instance.play()
-        game_result["run_id"] = run_id
+        game_result["run_id"]     = run_id
         game_result["run_kwargs"] = run_kwargs
         results.append(game_result)
 
