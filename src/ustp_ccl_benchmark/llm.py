@@ -57,111 +57,169 @@ If you do not want to guess anything, output ONLY this exact string:
 
 class LLM():
     def __init__(self, base_llm, config, role):
-        """
-        Initializes the LLM wrapper.
-        Usage: model_guesser = LLM(llm_model, config, "Guesser")
-        """
         self.base_llm = base_llm
-
-        # Dynamically fetch the model name from the wrapper if available
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
-
         self.role = role
         self.prompt = CODEMASTER_PROMPT if role == "Codemaster" else GUESSER_PROMPT
-
-        # Initialize strategy attribute
         self.strategy_refinement = ""
-
-        # 1. Initialize the memory with the System prompt
         self.clearMemory()
 
     def getLLMResponse(self, board, clue=None, feedback=None):
-        # 2. Build the message for the current turn
         turn_content = f"This is the current board as an array: {board}"
 
         if feedback:
             turn_content = f"FEEDBACK FROM LAST TURN: {feedback}\n\n" + turn_content
 
         if self.role == "Guesser" and clue:
-            turn_content = f"This is your partners clue: {clue}. The word hints towards the word your partner wants you to guess. The number implies the number of words the clue is meant for\n\n" + turn_content
+            turn_content = (
+                f"This is your partners clue: {clue}. The word hints towards the word your partner "
+                f"wants you to guess. The number implies the number of words the clue is meant for\n\n"
+                + turn_content
+            )
 
-        # 3. Append the user's turn to the history
-        self.history.append({
-            'role': 'user',
-            'content': turn_content
-        })
-
+        self.history.append({'role': 'user', 'content': turn_content})
         log(self.role, f"Calling {self.role}... {board}")
         response = self.callLLM()
-
-        # 5. CRITICAL: Save the model's answer back into the history!
-        self.history.append({
-            'role': 'assistant',
-            'content': response
-        })
-
+        self.history.append({'role': 'assistant', 'content': response})
         return response
 
-    def writeRefinement(self, refinement_batch):
-        """Generates a continuous learning strategy based on the past batch of games."""
+    # ------------------------------------------------------------------
+    # Reflection / continuous learning
+    # ------------------------------------------------------------------
 
-        # 1. Format the batch history into a readable transcript
-        history_text = ""
+    # Conservative char budget for the history block inside a reflection prompt.
+    # The model that triggered 400 errors has an 8192-token context with
+    # max_tokens=4096, leaving 4096 tokens for input. German compound words
+    # tokenize at roughly 2.4 chars/token on Gemma, not the 4.0 often assumed.
+    # Fixed overhead (system msg + reflection template) ~= 200 tokens ~= 480 chars.
+    # That leaves (4096 - 200) * 2.4 = ~9,350 chars -- but we want headroom for
+    # variance, so we cap at 3,000. Adjust upward on larger-context models.
+    REFLECTION_HISTORY_CHAR_LIMIT = 3_000
+
+    @staticmethod
+    def _build_compact_history(refinement_batch, char_limit: int) -> tuple[str, bool]:
+        """Render the batch as a terse, token-efficient transcript and truncate
+        to char_limit if needed.
+
+        Compact format (one line per turn instead of one verbose sentence):
+            G1(WIN):  (GEWINDE,1) -> SCHRAUBE[blue+1]
+            G2(LOSS): (TAG,1) -> ASSASSIN[assassin-25]
+
+        Returns (history_text, was_truncated).
+        """
+        import re
+
+        lines = []
         for game in refinement_batch:
-            history_text += f"\n--- Game {game['game_index']} ---\n"
-            if game['turn_history']:
-                history_text += "\n".join(game['turn_history']) + "\n"
-            else:
-                history_text += "No turns played.\n"
+            outcome = game.get("outcome", "?")
+            header = f"G{game['game_index']}({outcome}):"
 
-        # 2. The strict prompt for strategy reflection
-        reflection_prompt = (
-            "You have just completed a batch of Codenames games. Here is the transcript of your clues and your partner's guesses:\n"
-            f"{history_text}\n"
-            "Analyze your performance. Did the Guesser misunderstand your clues? Did they hit penalty words?\n"
-            "Based on this analysis, formulate a short list of strategic rules for yourself to improve your future performance.\n\n"
-            "CRITICAL RULES FOR THIS REFLECTION:\n"
-            "1. Focus ONLY on abstract strategy (e.g., risk management, specificity of clues, clue counts, word types).\n"
-            "2. DO NOT mention any specific words from the previous games, as the next boards will have completely different words.\n"
-            "3. Output ONLY the strategic guidelines. This exact output will become your system instructions for the next rounds."
-        )
+            if not game['turn_history']:
+                lines.append(f"{header} no turns")
+                continue
 
-        # 3. Create a temporary conversation just for this reflection
-        temp_history = [
-            {'role': 'system', 'content': f"You are an expert AI analyzing your past gameplay as the {self.role} to build a better strategy."},
-            {'role': 'user', 'content': reflection_prompt}
+            for turn_line in game['turn_history']:
+                # Original verbose format:
+                #   "- Turn 1: You gave clue (WORD, N). Guesser picked: 'X' (which was group)."
+                # We compress it to:
+                #   "G1(WIN): T1 (WORD,N) -> X[group]"
+                turn_num = re.search(r'Turn (\d+)', turn_line)
+                clue_match = re.search(r'\(([A-ZÄÖÜ]+),\s*(\d+)\)', turn_line)
+                picks = re.findall(r"'([^']+)' \(which was (\w+)\)", turn_line)
+
+                t = f"T{turn_num.group(1)}" if turn_num else "T?"
+                clue_str = f"({clue_match.group(1)},{clue_match.group(2)})" if clue_match else "(?,?)"
+                if picks:
+                    pick_str = ", ".join(f"{w}[{g}]" for w, g in picks)
+                else:
+                    pick_str = "pass"
+
+                lines.append(f"{header} {t} {clue_str} -> {pick_str}")
+
+        history_text = "\n".join(lines)
+
+        truncated = False
+        if len(history_text) > char_limit:
+            history_text = history_text[:char_limit]
+            history_text = history_text[:history_text.rfind("\n") + 1].rstrip()
+            history_text += "\n[...truncated...]"
+            truncated = True
+
+        return history_text, truncated
+
+    def writeRefinement(self, refinement_batch):
+        """Generates a continuous learning strategy based on the past batch of games.
+
+        Tries twice on context-overflow errors: first with the normal char limit,
+        then with half of it. If both fail the refinement is skipped and an empty
+        string is returned so the run can continue.
+        """
+        limits_to_try = [
+            self.REFLECTION_HISTORY_CHAR_LIMIT,
+            self.REFLECTION_HISTORY_CHAR_LIMIT // 2,
         ]
 
-        log(self.role, "Reflecting on batch to generate new strategy...")
+        for attempt, limit in enumerate(limits_to_try, start=1):
+            history_text, was_truncated = self._build_compact_history(refinement_batch, limit)
 
-        # Pass the temp_history explicitly to callLLM
-        new_strategy = self.callLLM(messages=temp_history)
+            if was_truncated:
+                log(self.role, f"History truncated to {limit} chars (attempt {attempt}).", level="warning")
 
-        # 4. Save the new strategy so clearMemory can inject it
-        self.strategy_refinement = new_strategy
-        log(self.role, f"New Strategy generated:\n{new_strategy}")
+            reflection_prompt = (
+                "Batch transcript:\n"
+                f"{history_text}\n\n"
+                "Write up to 5 concise strategic rules to improve future performance.\n"
+                "Rules must be abstract -- no specific words from these games.\n"
+                "Output ONLY the numbered rules, nothing else."
+            )
 
-        return new_strategy
+            temp_history = [
+                {'role': 'system', 'content': f"You are a Codenames {self.role} reviewing past games. Be concise."},
+                {'role': 'user', 'content': reflection_prompt},
+            ]
+
+            log(self.role, f"Reflecting (attempt {attempt}, {len(history_text)} chars)...")
+
+            try:
+                new_strategy = self.callLLM(messages=temp_history)
+                self.strategy_refinement = new_strategy
+                log(self.role, f"Strategy updated:\n{new_strategy}")
+                return new_strategy
+
+            except Exception as e:
+                # Catch context-overflow (400 BadRequestError) and any other
+                # transient failure so a bad refinement step never kills the run.
+                is_context_error = "400" in str(e) or "context" in str(e).lower() or "input_tokens" in str(e).lower()
+                if is_context_error and attempt < len(limits_to_try):
+                    log(self.role, f"Context overflow on attempt {attempt} -- retrying with half the history.", level="warning")
+                    continue
+                log(self.role, f"Refinement failed after {attempt} attempt(s): {e}. Skipping.", level="error")
+                return ""
+
+        # Shouldn't be reachable, but keeps the return type consistent.
+        return ""
+
+    # ------------------------------------------------------------------
+    # Memory
+    # ------------------------------------------------------------------
 
     def clearMemory(self):
         """Wipes history but injects the learned strategy into the base prompt."""
         system_content = self.prompt
-
-        # If we have learned a strategy from writeRefinement, append it!
         if self.strategy_refinement:
             system_content += "\n\n### YOUR CONTINUOUS LEARNING STRATEGY (Follow these tips strictly):\n"
             system_content += self.strategy_refinement
 
-        self.history = [
-            {'role': 'system', 'content': system_content}
-        ]
+        self.history = [{'role': 'system', 'content': system_content}]
         log(self.role, "Memory cleared. Base prompt and strategy loaded.")
 
+    # ------------------------------------------------------------------
+    # LLM dispatch
+    # ------------------------------------------------------------------
+
     def callLLM(self, messages=None):
-        # Allow passing custom messages for the reflection step, otherwise use history
         msgs = messages if messages is not None else self.history
 
-        # Translate our dict history into LangChain's native tuple format
         langchain_msgs = []
         for m in msgs:
             if m['role'] == 'system':
@@ -171,25 +229,17 @@ class LLM():
             else:
                 langchain_msgs.append(("human", m['content']))
 
-        # Attempt 1: If the wrapper exposes load_model() (like your OllamaLLM/VLLM)
-        # This is ideal because it passes the structured history directly to LangChain
         if hasattr(self.base_llm, 'load_model'):
             response = self.base_llm.load_model().invoke(langchain_msgs)
             return response.content
 
-        # Attempt 2: Fallback to the generic DeepEval generate() method
         elif hasattr(self.base_llm, 'generate'):
-            # Flatten the structured history into a single string
             flat_prompt = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in msgs])
             return self.base_llm.generate(flat_prompt)
 
-        # Attempt 3: Debug mode bypass
         elif getattr(self.base_llm, 'type', None) == "debug":
             return input(f"\nDebug LLM Input for {self.role}: ")
 
-        # FIX: this fallthrough used to return silently -- if base_llm had none
-        # of load_model/generate/a debug type, you'd just get a useless string
-        # back with zero indication anything was wrong.
         log(self.role, "No valid LLM configuration found for base_llm.", level="error")
         return "No valid LLM configuration found."
 
@@ -200,10 +250,6 @@ class LLM():
             "prompt": self.prompt,
             "final_strategy": self.strategy_refinement,
         }
-        # FIX: pulls vllm.py's token-usage/timing metrics (and qa_log) straight
-        # into the saved results, instead of them just sitting unused on the
-        # VLLM instance. Works with any base_llm that exposes get_metrics(),
-        # so it degrades gracefully for wrappers that don't.
         if hasattr(self.base_llm, "get_metrics"):
             summary_dict["llm_metrics"] = self.base_llm.get_metrics()
         return summary_dict

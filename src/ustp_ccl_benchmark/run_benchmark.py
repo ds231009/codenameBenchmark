@@ -5,76 +5,185 @@ from ustp_ccl_benchmark.game_set import GameSet
 from ustp_ccl_benchmark.config_dict import ConfigDict
 from ustp_ccl_benchmark.llm import LLM
 
-# The rest of the code remains exactly the same
-# default_config: ConfigDict = {
-#     "duration":         [{"rounds": 4, "refinement_after": 2}],
-#     "language_config":  [{"DE": 4}],
-#     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}]
-# }
-
 default_config: ConfigDict = {
-    "duration":         [{"rounds": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
-    "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}, {"DE": 5, "EN": 5, "FR": 5}],
-    "group_config":     [{"blue": 4, "red": 4, "assassin": 2}, {"blue": 2, "red": 2, "assassin": 6}, {"blue": 5, "red": 5, "assassin": 0}]
+    "duration":         [{"rounds": 4, "refinement_after": 2}],
+    "language_config":  [{"DE": 4}],
+    "group_config":     [{"blue": 1, "red": 1, "assassin": 2}]
 }
 
+# default_config: ConfigDict = {
+#     "duration":         [{"rounds": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
+#     "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}],
+#     "group_config":     [{"blue": 4, "red": 4, "assassin": 2}]
+# }
+
+
+def get_valid_combinations(config: ConfigDict) -> list[dict]:
+    """Generates all config combinations and filters out the invalid ones."""
+    required_keys = ["duration", "language_config", "group_config"]
+    
+    # Check for missing top-level keys first
+    for key in required_keys:
+        if key not in config or not isinstance(config[key], list) or not config[key]:
+            print(f"CRITICAL: Missing or empty required config key: '{key}'. Aborting benchmark.")
+            return []
+
+    config_keys = list(config.keys())
+    config_values = list(config.values())
+    
+    valid_combinations = []
+
+    # Evaluate each combination individually
+    for combo in itertools.product(*config_values):
+        run_kwargs = dict(zip(config_keys, combo))
+        is_valid = True
+
+        d = run_kwargs["duration"]
+        lang = run_kwargs["language_config"]
+        grp = run_kwargs["group_config"]
+
+        # 1. Validate Duration
+        if "rounds" not in d or not isinstance(d["rounds"], int) or d["rounds"] <= 0:
+            print(f"Skipped combo: Invalid duration config {d}")
+            is_valid = False
+        elif "refinement_after" in d and (not isinstance(d["refinement_after"], int) or d["refinement_after"] <= 0):
+            print(f"Skipped combo: Invalid refinement config in {d}")
+            is_valid = False
+
+        # 2. Validate Languages
+        elif not lang or not all(isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()):
+            print(f"Skipped combo: Invalid language config {lang}")
+            is_valid = False
+
+        # 3. Validate Groups
+        elif "blue" not in grp or "red" not in grp or not all(isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()):
+            print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
+            is_valid = False
+
+        # 4. Cross-validate divisibility constraint
+        else:
+            total_board_size = sum(grp.values())
+            lang_ratio_sum = sum(lang.values())
+            if total_board_size % lang_ratio_sum != 0:
+                print(
+                    f"Skipped incompatible combo: Board size ({total_board_size}) from {grp} "
+                    f"not divisible by language ratio sum ({lang_ratio_sum}) from {lang}."
+                )
+                is_valid = False
+
+        if is_valid:
+            valid_combinations.append(run_kwargs)
+
+    return valid_combinations
+
 def calculate_result(results: list[dict]) -> float:
-    """Turns the collected GameSet results into a single benchmark score.
+    """Composite benchmark score across all runs in a sweep, range [0, 1].
 
-    Placeholder: averages the win_rate across every run in the sweep, so
-    run_benchmark() returns something that actually reflects how the games
-    went instead of a hardcoded 1.0. Swap this out once stage 2 settles on
-    a real scoring formula -- e.g. blending in avg_final_score, weighting
-    error rates, or scoring per-config instead of pooling everything
-    together.
+    Three components, each normalized to [0, 1]:
+
+    Performance (weight 0.60)
+        avg_final_score / blue_count_per_game
+        Already encodes everything the model did right and wrong:
+        +1 per blue guess, -1 per red, -25 per assassin. Dividing by the
+        theoretical max (all blue words found, zero mistakes) gives a clean
+        fraction. Clamped to 0 from below so a catastrophic assassin game
+        doesn't drag the composite negative -- the win_rate already captures
+        "did you lose".
+
+    Speed (weight 0.20)
+        1 - mean(rounds_played / rounds_allowed)
+        1.0 = won on the first round, 0.0 = used every allowed turn (or
+        timed out). Rewards efficient communication between codemaster and
+        guesser; penalizes games that crawl to a win over many turns.
+
+    Reliability (weight 0.20)
+        1 - clamp(total_model_errors / total_turns_played, 0, 1)
+        Counts every format error, rule error, clue failure, and guesser
+        forfeit across all games and normalises by total rounds played.
+        A model that formats its output correctly every time scores 1.0 here.
+        This is intentionally a secondary signal -- a model that wins fast
+        with a couple of format errors is still good.
+
+    Why these weights:
+        Performance is primary because it directly reflects game outcome.
+        Speed and reliability matter for a production-quality model but
+        shouldn't dominate -- a slow-but-accurate model beats a fast sloppy one.
     """
-    # if not results:
-    #     return 0.0
+    if not results:
+        return 0.0
 
-    # win_rates = [r["aggregateStats"]["win_rate"] for r in results]
-    # return sum(win_rates) / len(win_rates)
-    return 1.0
+    perf_scores, speed_scores, reliability_scores = [], [], []
+
+    for run in results:
+        agg = run.get("aggregateStats", {})
+        games = run.get("games", [])
+        blue_count = run.get("run_kwargs", {}).get("group_config", {}).get("blue", 1)
+
+        # --- Performance ---
+        raw_perf = agg.get("avg_final_score", 0) / blue_count
+        perf_scores.append(max(0.0, min(1.0, raw_perf)))
+
+        # --- Speed ---
+        if games:
+            speed_ratios = [
+                g["stats"]["rounds_played"] / max(g["stats"]["rounds_total_allowed"], 1)
+                for g in games
+                if g.get("stats")
+            ]
+            speed_scores.append(1.0 - (sum(speed_ratios) / len(speed_ratios)) if speed_ratios else 0.0)
+        else:
+            speed_scores.append(0.0)
+
+        # --- Reliability ---
+        err = agg.get("error_totals", {})
+        total_errors = sum(err.values())
+        total_rounds = sum(
+            g["stats"].get("rounds_played", 0) for g in games if g.get("stats")
+        )
+        error_rate = total_errors / max(total_rounds, 1)
+        reliability_scores.append(max(0.0, 1.0 - error_rate))
+
+    def mean(lst):
+        return sum(lst) / len(lst) if lst else 0.0
+
+    score = (
+        0.60 * mean(perf_scores) +
+        0.20 * mean(speed_scores) +
+        0.20 * mean(reliability_scores)
+    )
+
+    return round(score, 4)
 
 
 def run_benchmark(
     bench_config: dict,
     llm_model: Any,
     guesser_model: Any = None,
-    custom_config: ConfigDict = None,  # <--- Now the IDE knows exactly what goes here!
+    custom_config: ConfigDict = None,
     benchmark_id: str = "bench",
 ) -> tuple[float, dict]:
 
     guesser_model = guesser_model or llm_model
-
-    # Safely handle the mutable default and merge dictionaries
     custom_config = custom_config or {}
-
-    # This takes default_config, and overwrites any matching keys with custom_config
     active_config = default_config | custom_config
 
-    # Extract keys and values dynamically
+    valid_combinations = get_valid_combinations(active_config)
+
+    if not valid_combinations:
+        print("No valid configurations found to run. Exiting early.")
+        return 0.0, {"completed_runs": 0, "results": []}
+
     config_keys = active_config.keys()
     config_values = active_config.values()
 
     results = []
 
-    # *config_values unpacks all the lists into itertools.product automatically
     for combo_index, combination in enumerate(itertools.product(*config_values), start=1):
-
         run_kwargs = dict(zip(config_keys, combination))
-
-        # FIX: previously GameSet always got the default benchmarkID="default",
-        # so every combination in this loop (different duration/language/group
-        # configs) wrote its results to the same file and overwrote the last
-        # one. Each combination now gets its own id. GameSet._run_signature()
-        # also bakes the config into the filename as a second layer of
-        # protection, so this isn't the only thing standing between you and
-        # an overwrite.
         run_id = f"{benchmark_id}_{combo_index:02d}"
 
         print(f"Running Game {run_id} with: {run_kwargs}")
 
-        # **run_kwargs unpacks the dictionary directly into the Game constructor
         game_instance = GameSet(
             llm=LLM(llm_model, {}, "Codemaster"),
             guesser=LLM(guesser_model, {}, "Guesser"),
@@ -83,9 +192,6 @@ def run_benchmark(
         )
 
         game_result = game_instance.play()
-        # Tag each run with what produced it, since `results` below pools
-        # every combination in the sweep together -- without this you can't
-        # tell which row came from which config.
         game_result["run_id"] = run_id
         game_result["run_kwargs"] = run_kwargs
         results.append(game_result)
