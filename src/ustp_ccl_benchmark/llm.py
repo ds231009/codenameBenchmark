@@ -78,7 +78,7 @@ class LLM():
             )
 
         self.history.append({'role': 'user', 'content': turn_content})
-        log(self.role, f"Calling {self.role}... {board}")
+        log(self.role, f"Calling {self.role}...", level="debug")
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
         return response

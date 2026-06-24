@@ -6,6 +6,7 @@ from datetime import datetime
 from collections import defaultdict
 import random
 import json
+from tqdm import tqdm
 
 from ustp_ccl_benchmark.board import Board
 from ustp_ccl_benchmark.game import Game
@@ -119,8 +120,8 @@ class GameSet:
         total_games = self.duration["rounds"]
         refinement_step = self.duration.get("refinement_after") or (total_games + 1)
 
-        for game_index in range(total_games):
-            log("runGame", f"=== STARTING GAME {game_index + 1} OF {total_games} ===")
+        for game_index in tqdm(range(total_games), desc=f"Playing Benchmark ({self.benchmarkID})", unit="game"):
+            log("runGame", f"=== STARTING GAME {game_index + 1} OF {total_games} ===", level="debug")
 
             # 2. Instantiate a fresh Board object for this specific round
             raw_board_data = self.all_boards_data[game_index]
