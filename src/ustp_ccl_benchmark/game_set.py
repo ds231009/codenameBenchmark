@@ -35,20 +35,30 @@ class GameSet:
         base_dir = Path(__file__).resolve().parent
 
         total_board_size = self.word_count
-        lang_ratio_sum   = sum(self.language_config.values())
-        group_ratio_sum  = sum(self.group_config.values())
 
-        # (Safety check - validation should already catch this in run_benchmark.py)
-        if total_board_size % lang_ratio_sum != 0 or total_board_size % group_ratio_sum != 0:
-            raise ValueError("word_count is not cleanly divisible by your language or group ratios.")
+        def allocate_proportional(target_total: int, ratios: dict) -> dict:
+            """Scales ratios to exactly hit target_total using the largest remainder method."""
+            ratio_sum = sum(ratios.values())
+            
+            # 1. Calculate exact float shares
+            exact_shares = {k: target_total * (v / ratio_sum) for k, v in ratios.items()}
+            
+            # 2. Assign base integers (floor)
+            allocated = {k: int(share) for k, share in exact_shares.items()}
+            
+            # 3. Figure out how many items are missing due to rounding down
+            remainders = {k: exact_shares[k] - allocated[k] for k in ratios.keys()}
+            shortfall = target_total - sum(allocated.values())
+            
+            # 4. Give 1 extra item to the keys with the highest decimal remainders
+            for k in sorted(remainders, key=remainders.get, reverse=True)[:shortfall]:
+                allocated[k] += 1
+                
+            return allocated
 
-        # 1. Scale Languages
-        lang_multiplier = total_board_size // lang_ratio_sum
-        words_per_lang  = {k: v * lang_multiplier for k, v in self.language_config.items()}
-
-        # 2. Scale Groups
-        group_multiplier    = total_board_size // group_ratio_sum
-        scaled_group_counts = {k: v * group_multiplier for k, v in self.group_config.items()}
+        # Scale Languages and Groups dynamically (no clean divisibility required)
+        words_per_lang = allocate_proportional(total_board_size, self.language_config)
+        scaled_group_counts = allocate_proportional(total_board_size, self.group_config)
 
         log("runGame", (
             f"Board layout: {total_board_size} words | "
@@ -56,9 +66,12 @@ class GameSet:
             f"languages {words_per_lang}"
         ))
 
-        # 3. Load only the necessary wordlists into memory
+        # Load only the necessary wordlists into memory
         loaded_wordlists = {}
         for lang, needed in words_per_lang.items():
+            if needed <= 0:
+                continue # Skip loading if a language rounded down to 0
+                
             wordlist_path = base_dir / "wordlists" / f"wordlist{lang.upper()}.txt"
 
             with open(wordlist_path, 'r', encoding="utf-8") as file:
@@ -73,12 +86,14 @@ class GameSet:
         boards = []
         total_games = self.duration["rounds"]
 
-        # 4. Generate each board
+        # Generate each board
         for _ in range(total_games):
             board_pool = []
 
             # Step A: Draw the required number of words from each language
             for lang, target_count in words_per_lang.items():
+                if target_count <= 0:
+                    continue
                 lang_words_copy = loaded_wordlists[lang].copy()
                 for _ in range(target_count):
                     board_pool.append(lang_words_copy.pop(random.randrange(len(lang_words_copy))))
@@ -89,7 +104,7 @@ class GameSet:
             # Step C: Assign words to groups using the scaled counts
             board_layout = []
             for group, count in scaled_group_counts.items():
-                for _ in range(int(count)):
+                for _ in range(count):
                     word_str = board_pool.pop()  # Pop from the mixed, randomized pool
                     board_layout.append({
                         "word": word_str.upper(),

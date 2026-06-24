@@ -20,7 +20,6 @@ default_config: ConfigDict = {
 
 
 def get_valid_combinations(config: ConfigDict) -> list[dict]:
-    # Add word_count to the required keys
     required_keys = ["duration", "language_config", "group_config", "word_count"]
 
     for key in required_keys:
@@ -71,13 +70,7 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
             print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
             is_valid = False
 
-        # 5. Cross-validate divisibility for both ratios against word_count
-        elif w_count % sum(lang.values()) != 0:
-            print(f"Skipped combo: word_count ({w_count}) is not divisible by language ratio sum ({sum(lang.values())}) from {lang}.")
-            is_valid = False
-        elif w_count % sum(grp.values()) != 0:
-            print(f"Skipped combo: word_count ({w_count}) is not divisible by group ratio sum ({sum(grp.values())}) from {grp}.")
-            is_valid = False
+        # DIVISIBILITY CHECKS REMOVED HERE!
 
         if is_valid:
             valid_combinations.append(run_kwargs)
