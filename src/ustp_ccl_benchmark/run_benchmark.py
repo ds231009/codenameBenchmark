@@ -7,8 +7,9 @@ from ustp_ccl_benchmark.llm import LLM
 
 default_config: ConfigDict = {
     "duration":         [{"rounds": 4, "refinement_after": 2}],
-    "language_config":  [{"DE": 4}],
-    "group_config":     [{"blue": 1, "red": 1, "assassin": 2}]
+    "language_config":  [{"DE": 1}],
+    "group_config":     [{"blue": 1, "red": 1, "assassin": 2}],
+    "word_count":       [4] 
 }
 
 # default_config: ConfigDict = {
@@ -19,13 +20,8 @@ default_config: ConfigDict = {
 
 
 def get_valid_combinations(config: ConfigDict) -> list[dict]:
-    """Generates all config combinations and filters out structurally invalid ones.
-
-    Divisibility (board size vs language ratio) is intentionally NOT checked
-    here -- game_set._generate_boards() upscales the word pool via ceiling
-    division so any ratio works without skipping the combination.
-    """
-    required_keys = ["duration", "language_config", "group_config"]
+    # Add word_count to the required keys
+    required_keys = ["duration", "language_config", "group_config", "word_count"]
 
     for key in required_keys:
         if key not in config or not isinstance(config[key], list) or not config[key]:
@@ -41,9 +37,10 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
         run_kwargs = dict(zip(config_keys, combo))
         is_valid = True
 
-        d    = run_kwargs["duration"]
-        lang = run_kwargs["language_config"]
-        grp  = run_kwargs["group_config"]
+        d       = run_kwargs["duration"]
+        lang    = run_kwargs["language_config"]
+        grp     = run_kwargs["group_config"]
+        w_count = run_kwargs["word_count"]
 
         # 1. Validate Duration
         if "rounds" not in d or not isinstance(d["rounds"], int) or d["rounds"] <= 0:
@@ -54,29 +51,32 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
         ):
             print(f"Skipped combo: Invalid refinement config in {d}")
             is_valid = False
+            
+        # 2. Validate Word Count
+        elif not isinstance(w_count, int) or w_count <= 0:
+            print(f"Skipped combo: Invalid word_count {w_count}")
+            is_valid = False
 
-        # 2. Validate Languages
+        # 3. Validate Languages
         elif not lang or not all(
             isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()
         ):
             print(f"Skipped combo: Invalid language config {lang}")
             is_valid = False
 
-        # 3. Validate Groups (must have blue and red; all counts non-negative integers)
+        # 4. Validate Groups
         elif "blue" not in grp or "red" not in grp or not all(
             isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()
         ):
             print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
             is_valid = False
 
-        # 4. Cross-validate: sum(language_config) must be divisible by sum(group_config).
-        #    language_config drives total board size; group_config is a ratio.
-        #    e.g. {"DE": 10} with blue:red:assassin=2:2:1 -> 10/5=2 -> blue=4, red=4, assassin=2.
-        elif sum(lang.values()) % sum(grp.values()) != 0:
-            print(
-                f"Skipped incompatible combo: language total ({sum(lang.values())}) from {lang} "
-                f"is not divisible by group ratio sum ({sum(grp.values())}) from {grp}."
-            )
+        # 5. Cross-validate divisibility for both ratios against word_count
+        elif w_count % sum(lang.values()) != 0:
+            print(f"Skipped combo: word_count ({w_count}) is not divisible by language ratio sum ({sum(lang.values())}) from {lang}.")
+            is_valid = False
+        elif w_count % sum(grp.values()) != 0:
+            print(f"Skipped combo: word_count ({w_count}) is not divisible by group ratio sum ({sum(grp.values())}) from {grp}.")
             is_valid = False
 
         if is_valid:
