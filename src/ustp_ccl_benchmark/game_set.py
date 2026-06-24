@@ -12,7 +12,6 @@ from ustp_ccl_benchmark.board import Board
 from ustp_ccl_benchmark.game import Game
 from ustp_ccl_benchmark.logging_utils import log
 
-
 class GameSet:
     def __init__(self, llm, guesser, duration, language_config, group_config, word_count, benchmarkID="default"):
         self.modelCodemaster = llm
@@ -110,7 +109,94 @@ class GameSet:
         rounds = self.duration.get("rounds", "?")
         return f"r{rounds}_w{self.word_count}_{short(self.language_config)}_{short(self.group_config)}"
 
-    # ... [Keep play and _aggregate_stats] ...
+
+    def play(self):
+        total_games = self.duration["rounds"]
+        refinement_step = self.duration.get("refinement_after") or (total_games + 1)
+
+        for game_index in tqdm(range(total_games), desc=f"Playing Benchmark ({self.benchmarkID})", unit="game"):
+            log("runGame", f"=== STARTING GAME {game_index + 1} OF {total_games} ===", level="debug")
+
+            # 2. Instantiate a fresh Board object for this specific round
+            raw_board_data = self.all_boards_data[game_index]
+            current_board = Board(raw_board_data)
+
+            initial_board_state = current_board.get_formatted("detailed", filter_by_group=["blue", "red", "assassin"])
+
+            # 3. Pass the Board and group_config into the Game
+            single_game = Game(self.modelCodemaster, self.modelGuesser, current_board, self.group_config)
+            game_result = single_game.play()
+
+            self.all_games_results.append({
+                "game_index": game_index + 1,
+                "rounds": game_result["rounds"],
+                "turn_history": game_result["turn_history"],
+                "stats": game_result["stats"],
+            })
+
+            self.refinement_batch.append({
+                "game_index": game_index + 1,
+                "initial_board": initial_board_state,
+                "turn_history": game_result["turn_history"],
+                "outcome": game_result["stats"]["outcome"],
+            })
+
+            # Refinement Logic
+            if (game_index + 1) % refinement_step == 0:
+                # Both roles get to reflect on the same batch.
+                codemaster_reflection = self.modelCodemaster.writeRefinement(self.refinement_batch)
+                guesser_reflection = self.modelGuesser.writeRefinement(self.refinement_batch)
+
+                self.refinements_results.append({
+                    "after_game": game_index + 1,
+                    "batch_data": self.refinement_batch,
+                    "codemaster_reflection": codemaster_reflection,
+                    "guesser_reflection": guesser_reflection,
+                })
+                self.refinement_batch = []
+                self.modelCodemaster.clearMemory()
+                self.modelGuesser.clearMemory()
+
+        return self.saveStats()
+
+    def _run_signature(self) -> str:
+        """A short, filesystem-safe fingerprint of this run's config (rounds +
+        language ratios + group sizes), so a parameter sweep that reuses the
+        same benchmarkID/model pair across multiple configs doesn't overwrite
+        results -- see createDirectory() below for the bug this fixes."""
+        def short(d: dict) -> str:
+            return "-".join(f"{k}{v}" for k, v in d.items())
+
+        rounds = self.duration.get("rounds", "?")
+        return f"r{rounds}_{short(self.language_config)}_{short(self.group_config)}"
+
+    def _aggregate_stats(self):
+        """Rolls up per-game stats into one GameSet-level summary: win rate,
+        average score, and total error/play counts across every game in this
+        run. This is the level stage 2 will probably want to start from."""
+        outcomes = {"WIN": 0, "LOSS_ASSASSIN": 0, "TIMEOUT": 0}
+        error_totals = defaultdict(int)
+        play_totals = defaultdict(int)
+        scores = []
+
+        for game in self.all_games_results:
+            stats = game["stats"]
+            outcomes[stats["outcome"]] = outcomes.get(stats["outcome"], 0) + 1
+            scores.append(stats["final_score"])
+            for k, v in stats["errors"].items():
+                error_totals[k] += v
+            for k, v in stats["play_counts"].items():
+                play_totals[k] += v
+
+        games_played = len(self.all_games_results) or 1
+        return {
+            "games_played": len(self.all_games_results),
+            "outcomes": outcomes,
+            "win_rate": outcomes["WIN"] / games_played,
+            "avg_final_score": sum(scores) / games_played if scores else 0,
+            "error_totals": dict(error_totals),
+            "play_count_totals": dict(play_totals),
+        }
 
     def saveStats(self):
         summary_data = {
