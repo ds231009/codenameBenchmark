@@ -56,6 +56,14 @@ If you do not want to guess anything, output ONLY this exact string:
 
 
 class LLM():
+    # Max number of user/assistant turn-pairs kept in the live game history
+    # before older ones are dropped. Prevents self.history from growing
+    # unboundedly across a multi-round game -- it was previously only ever
+    # cleared at clearMemory() (once per refinement batch), which is what
+    # let prompts creep past 8192 tokens mid-game on smaller-context models.
+    # The system prompt (index 0) is always preserved.
+    MAX_HISTORY_TURN_PAIRS = 6
+
     def __init__(self, base_llm, config, role):
         self.base_llm = base_llm
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
@@ -63,6 +71,16 @@ class LLM():
         self.prompt = CODEMASTER_PROMPT if role == "Codemaster" else GUESSER_PROMPT
         self.strategy_refinement = ""
         self.clearMemory()
+
+    def _trim_history(self):
+        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS
+        user/assistant pairs, dropping older turns from the front."""
+        system_msgs = self.history[:1]
+        turn_msgs = self.history[1:]
+        max_msgs = self.MAX_HISTORY_TURN_PAIRS * 2
+        if len(turn_msgs) > max_msgs:
+            turn_msgs = turn_msgs[-max_msgs:]
+        self.history = system_msgs + turn_msgs
 
     def getLLMResponse(self, board, clue=None, feedback=None):
         turn_content = f"This is the current board as an array: {board}"
@@ -78,6 +96,7 @@ class LLM():
             )
 
         self.history.append({'role': 'user', 'content': turn_content})
+        self._trim_history()
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
         return response

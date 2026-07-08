@@ -9,7 +9,7 @@ default_config: ConfigDict = {
     "duration":         [{"rounds": 4, "refinement_after": 2}],
     "language_config":  [{"DE": 1}],
     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}],
-    "word_count":       [4] 
+    "word_count":       [10] 
 }
 
 # default_config: ConfigDict = {
