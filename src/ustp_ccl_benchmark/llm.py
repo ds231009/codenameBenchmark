@@ -56,6 +56,14 @@ If you do not want to guess anything, output ONLY this exact string:
 
 
 class LLM():
+    # Max number of user/assistant turn-pairs kept in the live game history
+    # before older ones are dropped. Prevents self.history from growing
+    # unboundedly across a multi-round game -- it was previously only ever
+    # cleared at clearMemory() (once per refinement batch), which is what
+    # let prompts creep past 8192 tokens mid-game on smaller-context models.
+    # The system prompt (index 0) is always preserved.
+    MAX_HISTORY_TURN_PAIRS = 6
+    
     def __init__(self, base_llm, config, role):
         self.base_llm = base_llm
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
