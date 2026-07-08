@@ -56,31 +56,23 @@ If you do not want to guess anything, output ONLY this exact string:
 
 
 class LLM():
-    # Max number of user/assistant turn-pairs kept in the live game history
-    # before older ones are dropped. Prevents self.history from growing
-    # unboundedly across a multi-round game -- it was previously only ever
-    # cleared at clearMemory() (once per refinement batch), which is what
-    # let prompts creep past 8192 tokens mid-game on smaller-context models.
-    # The system prompt (index 0) is always preserved.
-    MAX_HISTORY_TURN_PAIRS = 6
-
     def __init__(self, base_llm, config, role):
         self.base_llm = base_llm
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
         self.role = role
         self.prompt = CODEMASTER_PROMPT if role == "Codemaster" else GUESSER_PROMPT
         self.strategy_refinement = ""
-        self.clearMemory()
 
-    def _trim_history(self):
-        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS
-        user/assistant pairs, dropping older turns from the front."""
-        system_msgs = self.history[:1]
-        turn_msgs = self.history[1:]
-        max_msgs = self.MAX_HISTORY_TURN_PAIRS * 2
-        if len(turn_msgs) > max_msgs:
-            turn_msgs = turn_msgs[-max_msgs:]
-        self.history = system_msgs + turn_msgs
+        # ------------------------------------------------------------------
+        # Call log: every individual LLM invocation (a move, or a refinement
+        # attempt) is appended here as {role, call_type, prompt, response}.
+        # GameSet drains this via pop_new_calls() after each game / refinement
+        # step so it can attribute each call to the right point in the run
+        # for the detailed live-output log.
+        # ------------------------------------------------------------------
+        self.call_log = []
+
+        self.clearMemory()
 
     def getLLMResponse(self, board, clue=None, feedback=None):
         turn_content = f"This is the current board as an array: {board}"
@@ -96,9 +88,16 @@ class LLM():
             )
 
         self.history.append({'role': 'user', 'content': turn_content})
-        self._trim_history()
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
+
+        self.call_log.append({
+            "role": self.role,
+            "call_type": "move",
+            "prompt": turn_content,
+            "response": response,
+        })
+
         return response
 
     # ------------------------------------------------------------------
@@ -171,6 +170,10 @@ class LLM():
         Tries twice on context-overflow errors: first with the normal char limit,
         then with half of it. If both fail the refinement is skipped and an empty
         string is returned so the run can continue.
+
+        Every attempt (successful or not) is recorded in self.call_log with its
+        prompt and response (or error) so the live output can show exactly what
+        was sent to the model and what came back.
         """
         limits_to_try = [
             self.REFLECTION_HISTORY_CHAR_LIMIT,
@@ -201,11 +204,29 @@ class LLM():
             try:
                 new_strategy = self.callLLM(messages=temp_history)
                 self.strategy_refinement = new_strategy
+
+                self.call_log.append({
+                    "role": self.role,
+                    "call_type": "refinement",
+                    "attempt": attempt,
+                    "prompt": reflection_prompt,
+                    "response": new_strategy,
+                })
+
                 return new_strategy
 
             except Exception as e:
                 # Catch context-overflow (400 BadRequestError) and any other
                 # transient failure so a bad refinement step never kills the run.
+                self.call_log.append({
+                    "role": self.role,
+                    "call_type": "refinement",
+                    "attempt": attempt,
+                    "prompt": reflection_prompt,
+                    "response": None,
+                    "error": str(e),
+                })
+
                 is_context_error = "400" in str(e) or "context" in str(e).lower() or "input_tokens" in str(e).lower()
                 if is_context_error and attempt < len(limits_to_try):
                     log(self.role, f"Context overflow on attempt {attempt} -- retrying with half the history.", level="warning")
@@ -215,6 +236,21 @@ class LLM():
 
         # Shouldn't be reachable, but keeps the return type consistent.
         return ""
+
+    # ------------------------------------------------------------------
+    # Call log
+    # ------------------------------------------------------------------
+
+    def pop_new_calls(self):
+        """Drains and returns every call recorded since the last drain.
+
+        Used by GameSet to attribute each LLM call (move or refinement) to
+        the specific game / refinement step it happened during, for the
+        detailed live-output log.
+        """
+        calls = self.call_log
+        self.call_log = []
+        return calls
 
     # ------------------------------------------------------------------
     # Memory

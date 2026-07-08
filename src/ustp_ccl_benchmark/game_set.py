@@ -27,7 +27,15 @@ class GameSet:
         self.all_boards_data = self._generate_boards()
 
         self.all_games_results = []
-        self.all_games_raw_output = []
+
+        # Detailed live-output tracking: per game and per refinement step, every
+        # individual LLM call (codemaster move, guesser move, refinement call)
+        # made during that step, with its prompt and response. Populated in
+        # play() and written out (together with all_boards_data) by
+        # _appendLiveOutput().
+        self.all_games_llm_calls = []
+        self.refinements_llm_calls = []
+
         self.refinements_results = []
         self.refinement_batch = []
 
@@ -112,13 +120,15 @@ class GameSet:
         return boards
 
     def _run_signature(self) -> str:
-        """Updated to include word_count in the filesystem signature."""
+        """A short, filesystem-safe fingerprint of this run's config (rounds +
+        language ratios + group sizes + word count), so a parameter sweep that
+        reuses the same benchmarkID/model pair across multiple configs doesn't
+        overwrite results -- see createDirectory() below for the bug this fixes."""
         def short(d: dict) -> str:
             return "-".join(f"{k}{v}" for k, v in d.items())
 
         rounds = self.duration.get("rounds", "?")
         return f"r{rounds}_w{self.word_count}_{short(self.language_config)}_{short(self.group_config)}"
-
 
     def play(self):
         total_games = self.duration["rounds"]
@@ -143,9 +153,12 @@ class GameSet:
                 "stats": game_result["stats"],
             })
 
-            self.all_games_raw_output.append({
+            # Drain every codemaster/guesser LLM call (prompt + response) made
+            # during this game so it can be written to the detailed live log.
+            self.all_games_llm_calls.append({
                 "game_index": game_index + 1,
-                "rounds": game_result["raw_output"],
+                "codemaster_calls": self.modelCodemaster.pop_new_calls(),
+                "guesser_calls": self.modelGuesser.pop_new_calls(),
             })
 
             self.refinement_batch.append({
@@ -159,7 +172,10 @@ class GameSet:
             if (game_index + 1) % refinement_step == 0:
                 # Both roles get to reflect on the same batch.
                 codemaster_reflection = self.modelCodemaster.writeRefinement(self.refinement_batch)
+                codemaster_refinement_calls = self.modelCodemaster.pop_new_calls()
+
                 guesser_reflection = self.modelGuesser.writeRefinement(self.refinement_batch)
+                guesser_refinement_calls = self.modelGuesser.pop_new_calls()
 
                 self.refinements_results.append({
                     "after_game": game_index + 1,
@@ -167,6 +183,15 @@ class GameSet:
                     "codemaster_reflection": codemaster_reflection,
                     "guesser_reflection": guesser_reflection,
                 })
+
+                # Drain the refinement LLM calls (prompt + response, including
+                # any failed retry attempts) for the detailed live log.
+                self.refinements_llm_calls.append({
+                    "after_game": game_index + 1,
+                    "codemaster_calls": codemaster_refinement_calls,
+                    "guesser_calls": guesser_refinement_calls,
+                })
+
                 self.refinement_batch = []
                 self.modelCodemaster.clearMemory()
                 self.modelGuesser.clearMemory()
@@ -174,17 +199,6 @@ class GameSet:
         self._appendLiveOutput()
 
         return self.saveStats()
-
-    def _run_signature(self) -> str:
-        """A short, filesystem-safe fingerprint of this run's config (rounds +
-        language ratios + group sizes), so a parameter sweep that reuses the
-        same benchmarkID/model pair across multiple configs doesn't overwrite
-        results -- see createDirectory() below for the bug this fixes."""
-        def short(d: dict) -> str:
-            return "-".join(f"{k}{v}" for k, v in d.items())
-
-        rounds = self.duration.get("rounds", "?")
-        return f"r{rounds}_{short(self.language_config)}_{short(self.group_config)}"
 
     def _aggregate_stats(self):
         """Rolls up per-game stats into one GameSet-level summary: win rate,
@@ -215,8 +229,18 @@ class GameSet:
         }
 
     def _appendLiveOutput(self):
-        """Appends this GameSet run's raw LLM output (clues + guesses only,
-        grouped by round, per game) to results/live/{benchmarkID}.json.
+        """Appends this GameSet run's detailed live output to
+        results/live/{benchmarkID}.json.
+
+        This now captures, for the whole run:
+        - "boards": every board generated for this run (index-aligned with
+          game_index - 1), i.e. all the raw word/group layouts used.
+        - "games": for each game, every individual LLM call made by the
+          codemaster and by the guesser during that game, each with its
+          prompt and the model's raw response.
+        - "refinements": for each refinement step, every LLM call made while
+          generating the codemaster's and guesser's reflections (including
+          any failed/retried attempts), each with its prompt and response.
 
         One file per benchmark_id regardless of model pairing or config --
         every GameSet run sharing a benchmark_id appends a new entry to the
@@ -238,8 +262,9 @@ class GameSet:
             "modelCodemaster": self.modelCodemaster.modelName,
             "modelGuesser": self.modelGuesser.modelName,
             "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
-            "board": self.all_boards_data,
-            "games": self.all_games_raw_output,
+            "boards": self.all_boards_data,
+            "games": self.all_games_llm_calls,
+            "refinements": self.refinements_llm_calls,
         })
 
         with open(live_path, "w", encoding="utf-8") as f:
