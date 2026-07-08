@@ -238,6 +238,7 @@ class GameSet:
             "modelCodemaster": self.modelCodemaster.modelName,
             "modelGuesser": self.modelGuesser.modelName,
             "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "board": self.all_boards_data,
             "games": self.all_games_raw_output,
         })
 
