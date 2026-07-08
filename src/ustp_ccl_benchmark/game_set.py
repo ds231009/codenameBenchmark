@@ -13,7 +13,8 @@ from ustp_ccl_benchmark.game import Game
 from ustp_ccl_benchmark.logging_utils import log
 
 class GameSet:
-    def __init__(self, llm, guesser, duration, language_config, group_config, word_count, benchmarkID="default"):
+    def __init__(self, llm, guesser, duration, language_config, group_config, word_count,
+                 benchmarkID="default", enable_live_output=True):
         self.modelCodemaster = llm
         self.modelGuesser = guesser
         self.benchmarkID = benchmarkID
@@ -22,6 +23,14 @@ class GameSet:
         self.language_config = language_config
         self.group_config = group_config
         self.word_count = word_count  # NEW parameter
+
+        # Master on/off switch for the detailed live-output log (all boards +
+        # every individual codemaster/guesser/refinement LLM call). When
+        # False, calls aren't even recorded on the LLM side (see log_calls
+        # below), and results/live/{benchmarkID}.json is never written.
+        self.enable_live_output = enable_live_output
+        self.modelCodemaster.log_calls = enable_live_output
+        self.modelGuesser.log_calls = enable_live_output
 
         # 1. Generate all board data upfront
         self.all_boards_data = self._generate_boards()
@@ -32,7 +41,7 @@ class GameSet:
         # individual LLM call (codemaster move, guesser move, refinement call)
         # made during that step, with its prompt and response. Populated in
         # play() and written out (together with all_boards_data) by
-        # _appendLiveOutput().
+        # _appendLiveOutput(). Stays empty when enable_live_output is False.
         self.all_games_llm_calls = []
         self.refinements_llm_calls = []
 
@@ -155,11 +164,17 @@ class GameSet:
 
             # Drain every codemaster/guesser LLM call (prompt + response) made
             # during this game so it can be written to the detailed live log.
-            self.all_games_llm_calls.append({
-                "game_index": game_index + 1,
-                "codemaster_calls": self.modelCodemaster.pop_new_calls(),
-                "guesser_calls": self.modelGuesser.pop_new_calls(),
-            })
+            # pop_new_calls() is cheap to call even when disabled (it just
+            # returns whatever log_calls left behind, i.e. nothing), but we
+            # skip storing it entirely when live output is off.
+            codemaster_move_calls = self.modelCodemaster.pop_new_calls()
+            guesser_move_calls = self.modelGuesser.pop_new_calls()
+            if self.enable_live_output:
+                self.all_games_llm_calls.append({
+                    "game_index": game_index + 1,
+                    "codemaster_calls": codemaster_move_calls,
+                    "guesser_calls": guesser_move_calls,
+                })
 
             self.refinement_batch.append({
                 "game_index": game_index + 1,
@@ -186,17 +201,21 @@ class GameSet:
 
                 # Drain the refinement LLM calls (prompt + response, including
                 # any failed retry attempts) for the detailed live log.
-                self.refinements_llm_calls.append({
-                    "after_game": game_index + 1,
-                    "codemaster_calls": codemaster_refinement_calls,
-                    "guesser_calls": guesser_refinement_calls,
-                })
+                if self.enable_live_output:
+                    self.refinements_llm_calls.append({
+                        "after_game": game_index + 1,
+                        "codemaster_calls": codemaster_refinement_calls,
+                        "guesser_calls": guesser_refinement_calls,
+                    })
 
                 self.refinement_batch = []
                 self.modelCodemaster.clearMemory()
                 self.modelGuesser.clearMemory()
 
-        self._appendLiveOutput()
+        if self.enable_live_output:
+            self._appendLiveOutput()
+        else:
+            log("liveOutput", f"Live output disabled for benchmark '{self.benchmarkID}' -- skipping.")
 
         return self.saveStats()
 
@@ -306,17 +325,23 @@ class GameSet:
 
 def liveOutputPath(benchmarkID):
     """Path to the live-updating raw-output JSON for a given benchmark_id.
-    One file per benchmark_id, in results/live/, regardless of model or config."""
-    BASE_DIR = Path(__file__).resolve().parent
-    live_dir = BASE_DIR.parent / "results" / "live"
+    One file per benchmark_id, in results/live/, regardless of model or config.
+
+    Uses the current working directory (i.e. wherever the benchmark was
+    invoked from), NOT the package's install location -- this package is
+    installed via pip+git, so `Path(__file__).resolve().parent` would resolve
+    inside site-packages/the git checkout instead of the user's project
+    folder.
+    """
+    live_dir = Path.cwd() / "results" / "live"
     live_dir.mkdir(parents=True, exist_ok=True)
     return live_dir / f"{benchmarkID}.json"
 
 
 def createDirectory(benchmarkID, modelCodemaster, modelGuesser, run_signature):
-    BASE_DIR = Path(__file__).resolve().parent
-
-    results_dir = BASE_DIR.parent / "results"
+    # Same reasoning as liveOutputPath(): anchor to the caller's cwd, not the
+    # installed package directory.
+    results_dir = Path.cwd() / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     shortModelCodemaster = modelCodemaster.replace(".", "").replace(":", "")

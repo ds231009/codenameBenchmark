@@ -5,6 +5,13 @@ from ustp_ccl_benchmark.game_set import GameSet
 from ustp_ccl_benchmark.config_dict import ConfigDict
 from ustp_ccl_benchmark.llm import LLM
 
+# Master on/off switch for the detailed live-output log (results/live/{benchmarkID}.json --
+# all boards plus every individual codemaster/guesser/refinement LLM call with
+# its prompt and response). Flip to False to skip recording/writing it, e.g.
+# for large sweeps where you only care about the final aggregated results.
+# Can also be overridden per-call via run_benchmark(..., enable_live_output=...).
+ENABLE_LIVE_OUTPUT = True
+
 default_config: ConfigDict = {
     "duration":         [{"rounds": 4, "refinement_after": 2}],
     "language_config":  [{"DE": 1}],
@@ -160,6 +167,7 @@ def run_benchmark(
     guesser_model: Any = None,
     custom_config: ConfigDict = None,
     benchmark_id: str = "bench",
+    enable_live_output: bool = ENABLE_LIVE_OUTPUT,
 ) -> tuple[float, dict]:
 
     guesser_model = guesser_model or llm_model
@@ -176,6 +184,7 @@ def run_benchmark(
     total_runs = len(valid_combinations)
     print(f"\n=== BENCHMARK SETUP ===")
     print(f"Found {total_runs} valid combinations to run.")
+    print(f"Live output logging: {'ON' if enable_live_output else 'OFF'}")
     print(f"=======================\n")
 
     results = []
@@ -190,6 +199,7 @@ def run_benchmark(
             llm=LLM(llm_model, {}, "Codemaster"),
             guesser=LLM(guesser_model, {}, "Guesser"),
             benchmarkID=run_id,
+            enable_live_output=enable_live_output,
             **run_kwargs
         )
 

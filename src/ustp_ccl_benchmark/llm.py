@@ -69,8 +69,15 @@ class LLM():
         # GameSet drains this via pop_new_calls() after each game / refinement
         # step so it can attribute each call to the right point in the run
         # for the detailed live-output log.
+        #
+        # log_calls is a master on/off switch (set by GameSet based on its
+        # enable_live_output flag). When False, nothing is appended at all --
+        # this matters because a long benchmark run reuses the same LLM
+        # instance across every game, so an unbounded call_log would just be
+        # wasted memory when nobody wants the detailed log.
         # ------------------------------------------------------------------
         self.call_log = []
+        self.log_calls = True
 
         self.clearMemory()
 
@@ -91,12 +98,13 @@ class LLM():
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
 
-        self.call_log.append({
-            "role": self.role,
-            "call_type": "move",
-            "prompt": turn_content,
-            "response": response,
-        })
+        if self.log_calls:
+            self.call_log.append({
+                "role": self.role,
+                "call_type": "move",
+                "prompt": turn_content,
+                "response": response,
+            })
 
         return response
 
@@ -205,27 +213,29 @@ class LLM():
                 new_strategy = self.callLLM(messages=temp_history)
                 self.strategy_refinement = new_strategy
 
-                self.call_log.append({
-                    "role": self.role,
-                    "call_type": "refinement",
-                    "attempt": attempt,
-                    "prompt": reflection_prompt,
-                    "response": new_strategy,
-                })
+                if self.log_calls:
+                    self.call_log.append({
+                        "role": self.role,
+                        "call_type": "refinement",
+                        "attempt": attempt,
+                        "prompt": reflection_prompt,
+                        "response": new_strategy,
+                    })
 
                 return new_strategy
 
             except Exception as e:
                 # Catch context-overflow (400 BadRequestError) and any other
                 # transient failure so a bad refinement step never kills the run.
-                self.call_log.append({
-                    "role": self.role,
-                    "call_type": "refinement",
-                    "attempt": attempt,
-                    "prompt": reflection_prompt,
-                    "response": None,
-                    "error": str(e),
-                })
+                if self.log_calls:
+                    self.call_log.append({
+                        "role": self.role,
+                        "call_type": "refinement",
+                        "attempt": attempt,
+                        "prompt": reflection_prompt,
+                        "response": None,
+                        "error": str(e),
+                    })
 
                 is_context_error = "400" in str(e) or "context" in str(e).lower() or "input_tokens" in str(e).lower()
                 if is_context_error and attempt < len(limits_to_try):
