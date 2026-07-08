@@ -45,13 +45,6 @@ def log(channel: str, *args, level: str = "info", **kwargs):
     level:   "info" | "warning" | "error". Cosmetic only -- everything
              still prints, nothing is filtered out.
     """
-    if level == "error":
-        color = Fore.RED + Style.BRIGHT
-    elif level == "warning":
-        color = Fore.YELLOW
-    else:
-        color = _COLOR_MAP.get(channel, Fore.WHITE)
-
     prefix = _LEVEL_PREFIX.get(level, "")
     message = ", ".join(map(str, (*args, *kwargs.values())))
-    print(f"{color}[{channel}] {prefix}{message}{Style.RESET_ALL}")
+    print(f"[{channel}] {prefix}{message}")

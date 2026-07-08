@@ -27,6 +27,7 @@ class GameSet:
         self.all_boards_data = self._generate_boards()
 
         self.all_games_results = []
+        self.all_games_raw_output = []
         self.refinements_results = []
         self.refinement_batch = []
 
@@ -142,6 +143,11 @@ class GameSet:
                 "stats": game_result["stats"],
             })
 
+            self.all_games_raw_output.append({
+                "game_index": game_index + 1,
+                "rounds": game_result["raw_output"],
+            })
+
             self.refinement_batch.append({
                 "game_index": game_index + 1,
                 "initial_board": initial_board_state,
@@ -164,6 +170,8 @@ class GameSet:
                 self.refinement_batch = []
                 self.modelCodemaster.clearMemory()
                 self.modelGuesser.clearMemory()
+
+        self._appendLiveOutput()
 
         return self.saveStats()
 
@@ -206,6 +214,38 @@ class GameSet:
             "play_count_totals": dict(play_totals),
         }
 
+    def _appendLiveOutput(self):
+        """Appends this GameSet run's raw LLM output (clues + guesses only,
+        grouped by round, per game) to results/live/{benchmarkID}.json.
+
+        One file per benchmark_id regardless of model pairing or config --
+        every GameSet run sharing a benchmark_id appends a new entry to the
+        same list rather than creating a new file. Written once per full
+        run (not per individual game), after all games in this run finish.
+        """
+        live_path = liveOutputPath(self.benchmarkID)
+
+        try:
+            with open(live_path, "r", encoding="utf-8") as f:
+                live_data = json.load(f)
+            if not isinstance(live_data, list):
+                live_data = []
+        except (FileNotFoundError, json.JSONDecodeError):
+            live_data = []
+
+        live_data.append({
+            "run_signature": self._run_signature(),
+            "modelCodemaster": self.modelCodemaster.modelName,
+            "modelGuesser": self.modelGuesser.modelName,
+            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "games": self.all_games_raw_output,
+        })
+
+        with open(live_path, "w", encoding="utf-8") as f:
+            json.dump(live_data, f, indent=4, ensure_ascii=False)
+
+        log("liveOutput", f"Appended run to {live_path}")
+
     def saveStats(self):
         summary_data = {
             "gameSize": self.group_config,
@@ -237,6 +277,15 @@ class GameSet:
 
 
 # --- Helper File Operations ---
+
+def liveOutputPath(benchmarkID):
+    """Path to the live-updating raw-output JSON for a given benchmark_id.
+    One file per benchmark_id, in results/live/, regardless of model or config."""
+    BASE_DIR = Path(__file__).resolve().parent
+    live_dir = BASE_DIR.parent / "results" / "live"
+    live_dir.mkdir(parents=True, exist_ok=True)
+    return live_dir / f"{benchmarkID}.json"
+
 
 def createDirectory(benchmarkID, modelCodemaster, modelGuesser, run_signature):
     BASE_DIR = Path(__file__).resolve().parent

@@ -77,6 +77,7 @@ class Game:
             "rounds": self.current_game_rounds,
             "turn_history": self.turn_history,
             "stats": self.stats,
+            "raw_output": [r["raw_output"] for r in self.current_game_rounds],
         }
 
     def runRound(self, round_number):
@@ -85,7 +86,7 @@ class Game:
         else:
             history_prompt = "HISTORY OF PREVIOUS TURNS IN THIS GAME:\n" + "\n".join(self.turn_history)
 
-        clue, count, clue_errors = self.getClue(feedback=history_prompt)
+        clue, count, clue_errors, raw_clue = self.getClue(feedback=history_prompt)
 
         round_data = {
             "round_number": round_number,
@@ -93,15 +94,21 @@ class Game:
             "clue_count_requested": count,
             "clue_errors": clue_errors,
             "guesses": [],
+            "raw_output": {
+                "round": round_number,
+                "clue_raw": raw_clue,
+                "guess_raw": [],
+            },
         }
 
         if clue is None:
             self.turn_history.append(f"- Turn {round_number}: Codemaster failed to format a clue. Turn skipped.")
             return True, round_data
 
-        guesses, continueGame = self.getGuesses(clue, count)
+        guesses, continueGame, raw_guesses = self.getGuesses(clue, count)
 
         round_data["guesses"] = guesses
+        round_data["raw_output"]["guess_raw"] = raw_guesses
         guess_strings = [f"'{g['word']}' (which was {g['group']})" for g in guesses]
 
         if not guess_strings:
@@ -137,7 +144,7 @@ class Game:
                     raise ClueRuleError(f"Clue '{clue_word}' is a word currently on the board.")
 
                 self.stats["play_counts"]["total_clue_count_requested"] += count
-                return clue_word, count, clue_errors
+                return clue_word, count, clue_errors, rawClue
 
             except (ClueFormatError, ClueRuleError) as e:
                 clue_errors.append({"attempt": attempt, "type": type(e).__name__, "error": str(e)})
@@ -147,15 +154,19 @@ class Game:
                     self.stats["errors"]["codemaster_rule_errors"] += 1
 
         self.stats["errors"]["codemaster_clue_failures"] += 1
-        return None, 0, clue_errors
+        return None, 0, clue_errors, rawClue if 'rawClue' in locals() else None
 
     def getGuesses(self, clue, count):
         guesses = []
+        raw_guesses = []
         continueGame = True
 
         while count > 0:
             guess_attempt = self.getGuess(clue)
             outcome = guess_attempt["outcome"]
+
+            if guess_attempt.get("raw") is not None:
+                raw_guesses.append(guess_attempt["raw"])
 
             if outcome == "pass":
                 self.stats["play_counts"]["passes"] += 1
@@ -178,14 +189,15 @@ class Game:
                 break
             count -= 1
 
-        return guesses, continueGame
+        return guesses, continueGame, raw_guesses
 
     def getGuess(self, clue):
         """Returns a dict: {"result": board word or None, "outcome": "guess"|"pass"|"forfeit",
-        "attempts": int, "errors": [...]}."""
+        "attempts": int, "errors": [...], "raw": last raw LLM response text or None}."""
         max_attempts = 5
         guess_errors = []
         error_feedback = ""
+        rawGuess = None
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -203,7 +215,7 @@ class Game:
                 # deliberate [no guess] pass was silently mis-handled as an
                 # "invalid word" guess. Compared upper-to-upper now.
                 if guess_word == "NO GUESS":
-                    return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors}
+                    return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors, "raw": rawGuess}
 
                 if guess_word in self.board.remaining_words():
                     return {
@@ -211,6 +223,7 @@ class Game:
                         "outcome": "guess",
                         "attempts": attempt,
                         "errors": guess_errors,
+                        "raw": rawGuess,
                     }
 
                 raise GuessRuleError(f"You guessed '{guess_word}', but it isn't a valid, unrevealed word on the board!")
@@ -224,7 +237,7 @@ class Game:
                 error_feedback = str(e)
 
         self.stats["errors"]["guesser_turn_forfeits"] += 1
-        return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors}
+        return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors, "raw": rawGuess}
 
     def handleGuess(self, guess):
         continueGame, continueRound, score = True, True, 0
