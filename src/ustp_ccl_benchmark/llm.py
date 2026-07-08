@@ -80,6 +80,16 @@ class LLM():
         self.log_calls = True
 
         self.clearMemory()
+        
+    def _trim_history(self):
+        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS
+        user/assistant pairs, dropping older turns from the front."""
+        system_msgs = self.history[:1]
+        turn_msgs = self.history[1:]
+        max_msgs = self.MAX_HISTORY_TURN_PAIRS * 2
+        if len(turn_msgs) > max_msgs:
+            turn_msgs = turn_msgs[-max_msgs:]
+        self.history = system_msgs + turn_msgs
 
     def getLLMResponse(self, board, clue=None, feedback=None):
         turn_content = f"This is the current board as an array: {board}"
@@ -95,6 +105,7 @@ class LLM():
             )
 
         self.history.append({'role': 'user', 'content': turn_content})
+        self._trim_history()
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
 
