@@ -111,10 +111,18 @@ class LLM():
         if len(self.history) >= 3: # Keep system prompt safe
             self.history = self.history[:-2]
 
-    def getLLMResponse(self, board_words, feedback=""):
-        """Formats the turn, calls the LLM, logs it, and returns the response."""
-        
-        turn_content = f"{feedback}\n\nThis is the current board as an array: {board_words}"
+    def getLLMResponse(self, board_words, clue=None, feedback=""):
+        """Formats the turn, calls the LLM, logs it, and returns the response.
+
+        `clue` is only passed by the guesser call site (the codemaster has
+        no clue to receive yet -- it's producing one). When present, it's
+        folded into the prompt so the guesser actually sees what it's
+        supposed to be guessing against.
+        """
+        if clue is not None:
+            turn_content = f"{feedback}\n\nClue from Codemaster: {clue}\n\nThis is the current board as an array: {board_words}"
+        else:
+            turn_content = f"{feedback}\n\nThis is the current board as an array: {board_words}"
         self.history.append({'role': 'user', 'content': turn_content})
         
         self._trim_history()
