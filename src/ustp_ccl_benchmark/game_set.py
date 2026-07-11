@@ -252,9 +252,11 @@ class GameSet:
         """Saves this GameSet run's detailed live output to a unique CSV file.
         
         Captures every individual LLM call made by the codemaster and guesser 
-        during the game and refinement steps, formatted as (prompt, answer).
-        Uses a timestamped filename to ensure no models run is overwritten.
+        during the game and refinement steps. Sorts chronologically by timestamp.
         """
+        import csv
+        from datetime import datetime
+        
         live_dir = Path.cwd() / "results" / "live"
         live_dir.mkdir(parents=True, exist_ok=True)
 
@@ -262,40 +264,55 @@ class GameSet:
         short_cm = self.modelCodemaster.modelName.replace(".", "").replace(":", "").replace("/", "-").replace("\\", "-")
         short_guesser = self.modelGuesser.modelName.replace(".", "").replace(":", "").replace("/", "-").replace("\\", "-")
         
-        # Create a unique filename to prevent overwriting
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_filename = f"{self.benchmarkID}_{short_cm}_{short_guesser}_{timestamp}.csv"
         csv_path = live_dir / csv_filename
 
-        # Flatten all LLM calls into a single list
         all_calls = []
         
-        # Extract game calls
+        # Extract game calls and tag them with their game index
         for game_calls in self.all_games_llm_calls:
-            all_calls.extend(game_calls.get("codemaster_calls", []))
-            all_calls.extend(game_calls.get("guesser_calls", []))
+            idx = game_calls.get("game_index", "?")
+            for call in game_calls.get("codemaster_calls", []):
+                call["game_index"] = idx
+                all_calls.append(call)
+            for call in game_calls.get("guesser_calls", []):
+                call["game_index"] = idx
+                all_calls.append(call)
             
-        # Extract refinement calls
+        # Extract refinement calls and tag them
         for ref_calls in self.refinements_llm_calls:
-            all_calls.extend(ref_calls.get("codemaster_calls", []))
-            all_calls.extend(ref_calls.get("guesser_calls", []))
+            idx = f"{ref_calls.get('after_game', '?')} (Refinement)"
+            for call in ref_calls.get("codemaster_calls", []):
+                call["game_index"] = idx
+                all_calls.append(call)
+            for call in ref_calls.get("guesser_calls", []):
+                call["game_index"] = idx
+                all_calls.append(call)
 
-        # Write to CSV
+        # Sort everything chronologically by the timestamp recorded in llm.py
+        all_calls.sort(key=lambda x: x.get("timestamp", ""))
+
+        # Write to CSV with richer headers
         with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Prompt", "Answer"])
+            writer.writerow(["Timestamp", "Game_Index", "Role", "Call_Type", "Prompt", "Answer"])
             
             for call in all_calls:
+                ts = call.get("timestamp", "")
+                g_idx = call.get("game_index", "")
+                role = call.get("role", "")
+                c_type = call.get("call_type", "")
                 prompt = call.get("prompt", "")
                 answer = call.get("response", "")
                 
-                # If there was a context error or timeout, append it to the answer column
+                # If there was a context error or timeout, append it
                 if call.get("error"):
                     answer = f"{answer} [ERROR: {call.get('error')}]".strip()
                     
-                writer.writerow([prompt, answer])
+                writer.writerow([ts, g_idx, role, c_type, prompt, answer])
 
-        log("liveOutput", f"Saved full LLM interactions to {csv_path}")
+        log("liveOutput", f"Saved full sorted LLM interactions to {csv_path}")
 
     def saveStats(self):
         summary_data = {

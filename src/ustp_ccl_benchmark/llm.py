@@ -1,4 +1,5 @@
 from ustp_ccl_benchmark.logging_utils import log
+from datetime import datetime
 
 CODEMASTER_PROMPT = """
 You are playing a game of Codemaster in the role of the CODEMASTER.
@@ -130,6 +131,7 @@ class LLM():
 
         if self.log_calls:
             self.call_log.append({
+                "timestamp": datetime.now().isoformat(),  # <-- ADD THIS LINE
                 "role": self.role,
                 "call_type": "move",
                 "prompt": turn_content,
