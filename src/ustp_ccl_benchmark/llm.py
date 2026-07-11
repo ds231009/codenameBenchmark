@@ -111,35 +111,41 @@ class LLM():
         if len(self.history) >= 3: # Keep system prompt safe
             self.history = self.history[:-2]
 
-    def getLLMResponse(self, board, clue=None, feedback=None):
-        turn_content = f"This is the current board as an array: {board}"
-
-        if feedback:
-            turn_content = f"FEEDBACK FROM LAST TURN: {feedback}\n\n" + turn_content
-
-        if self.role == "Guesser" and clue:
-            turn_content = (
-                f"This is your partners clue: {clue}. The word hints towards the word your partner "
-                f"wants you to guess. The number implies the number of words the clue is meant for\n\n"
-                + turn_content
-            )
-
+    def getLLMResponse(self, board_words, feedback=""):
+        """Formats the turn, calls the LLM, logs it, and returns the response."""
+        
+        turn_content = f"{feedback}\n\nThis is the current board as an array: {board_words}"
         self.history.append({'role': 'user', 'content': turn_content})
+        
         self._trim_history()
         
         full_prompt_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in self.history])
-        
-        response = self.callLLM()
-        self.history.append({'role': 'assistant', 'content': response})
 
-        if self.log_calls:
-            self.call_log.append({
-                "timestamp": datetime.now().isoformat(),
-                "role": self.role,
-                "call_type": "move",
-                "prompt": full_prompt_text,
-                "response": response,
-            })
+        try:
+            response = self.callLLM()
+            self.history.append({'role': 'assistant', 'content': response})
+
+            if self.log_calls:
+                self.call_log.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "role": self.role,
+                    "call_type": "move",
+                    "prompt": full_prompt_text, # <-- Logs the FULL context
+                    "response": response,
+                })
+            return response
+
+        except Exception as e:
+            if self.log_calls:
+                self.call_log.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "role": self.role,
+                    "call_type": "move",
+                    "prompt": full_prompt_text,
+                    "response": "",
+                    "error": str(e)
+                })
+            return None # Safely return None so game.py can catch and retry it
 
     # ------------------------------------------------------------------
     # Reflection / continuous learning
@@ -239,19 +245,22 @@ class LLM():
                 {'role': 'system', 'content': f"You are a Codenames {self.role} reviewing past games. Be concise."},
                 {'role': 'user', 'content': reflection_prompt},
             ]
+            
+            full_prompt_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in temp_history])
 
             log(self.role, f"Reflecting (attempt {attempt}, {len(history_text)} chars)...")
 
             try:
                 new_strategy = self.callLLM(messages=temp_history)
-                self.strategy_refinement = new_strategy
+                self.strategy_refinement = new_strategy.strip()
 
                 if self.log_calls:
                     self.call_log.append({
+                        "timestamp": datetime.now().isoformat(),
                         "role": self.role,
                         "call_type": "refinement",
                         "attempt": attempt,
-                        "prompt": reflection_prompt,
+                        "prompt": full_prompt_text,
                         "response": new_strategy,
                     })
 
@@ -262,6 +271,7 @@ class LLM():
                 # transient failure so a bad refinement step never kills the run.
                 if self.log_calls:
                     self.call_log.append({
+                        "timestamp": datetime.now().isoformat(),
                         "role": self.role,
                         "call_type": "refinement",
                         "attempt": attempt,
