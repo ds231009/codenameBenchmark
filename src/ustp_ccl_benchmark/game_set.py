@@ -259,8 +259,8 @@ class GameSet:
         live_dir.mkdir(parents=True, exist_ok=True)
 
         # Sanitize model names for the filename
-        short_cm = self.modelCodemaster.modelName.replace(".", "").replace(":", "")
-        short_guesser = self.modelGuesser.modelName.replace(".", "").replace(":", "")
+        short_cm = self.modelCodemaster.modelName.replace(".", "").replace(":", "").replace("/", "-").replace("\\", "-")
+        short_guesser = self.modelGuesser.modelName.replace(".", "").replace(":", "").replace("/", "-").replace("\\", "-")
         
         # Create a unique filename to prevent overwriting
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
