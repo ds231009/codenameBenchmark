@@ -158,7 +158,7 @@ class Game:
                 
                 # Capture the error for the next loop iteration
                 error_feedback = str(e)
-                self.modelGuesser.rollback_last_turn()
+                self.modelCodemaster.rollback_last_turn()
 
         self.stats["errors"]["codemaster_clue_failures"] += 1
         return None, 0, clue_errors
