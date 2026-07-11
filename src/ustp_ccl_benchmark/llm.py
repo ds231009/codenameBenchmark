@@ -126,19 +126,20 @@ class LLM():
 
         self.history.append({'role': 'user', 'content': turn_content})
         self._trim_history()
+        
+        full_prompt_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in self.history])
+        
         response = self.callLLM()
         self.history.append({'role': 'assistant', 'content': response})
 
         if self.log_calls:
             self.call_log.append({
-                "timestamp": datetime.now().isoformat(),  # <-- ADD THIS LINE
+                "timestamp": datetime.now().isoformat(),
                 "role": self.role,
                 "call_type": "move",
-                "prompt": turn_content,
+                "prompt": full_prompt_text,
                 "response": response,
             })
-
-        return response
 
     # ------------------------------------------------------------------
     # Reflection / continuous learning

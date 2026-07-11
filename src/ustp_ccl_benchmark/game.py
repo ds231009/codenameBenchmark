@@ -99,7 +99,7 @@ class Game:
             self.turn_history.append(f"- Turn {round_number}: Codemaster failed to format a clue. Turn skipped.")
             return True, round_data
 
-        guesses, continueGame = self.getGuesses(clue, count)
+        guesses, continueGame = self.getGuesses(clue, count, history_prompt)
 
         round_data["guesses"] = guesses
         guess_strings = [f"'{g['word']}' (which was {g['group']})" for g in guesses]
@@ -158,12 +158,13 @@ class Game:
         self.stats["errors"]["codemaster_clue_failures"] += 1
         return None, 0, clue_errors
 
-    def getGuesses(self, clue, count):
+    def getGuesses(self, clue, count, history_prompt):
         guesses = []
         continueGame = True
 
         while count > 0:
-            guess_attempt = self.getGuess(clue)
+            # Pass it down to getGuess
+            guess_attempt = self.getGuess(clue, history_prompt)
             outcome = guess_attempt["outcome"]
 
             if outcome == "pass":
@@ -189,9 +190,8 @@ class Game:
 
         return guesses, continueGame
 
-    def getGuess(self, clue):
-        """Returns a dict: {"result": board word or None, "outcome": "guess"|"pass"|"forfeit",
-        "attempts": int, "errors": [...]}."""
+    def getGuess(self, clue, history_prompt):
+        """Returns a dict..."""
         max_attempts = 5
         guess_errors = []
         error_feedback = ""
@@ -199,7 +199,13 @@ class Game:
         for attempt in range(1, max_attempts + 1):
             try:
                 prompt_clue = f"{clue}. WARNING: {error_feedback}" if error_feedback else clue
-                rawGuess = self.modelGuesser.getLLMResponse(self.board.remaining_words(), prompt_clue)
+                
+                # Pass the history_prompt as the 'feedback' keyword argument
+                rawGuess = self.modelGuesser.getLLMResponse(
+                    self.board.remaining_words(), 
+                    prompt_clue,
+                    feedback=history_prompt  # <-- ADD THIS
+                )
 
                 match = re.search(r'\[([^\]]*)\]', rawGuess)
                 if not match:
