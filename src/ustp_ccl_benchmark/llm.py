@@ -90,14 +90,25 @@ class LLM():
         self.clearMemory()
         
     def _trim_history(self):
-        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS
-        user/assistant pairs, dropping older turns from the front."""
+        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS."""
         system_msgs = self.history[:1]
         turn_msgs = self.history[1:]
+        
         max_msgs = self.MAX_HISTORY_TURN_PAIRS * 2
+        
         if len(turn_msgs) > max_msgs:
-            turn_msgs = turn_msgs[-max_msgs:]
+            start_index = len(turn_msgs) - max_msgs
+            if turn_msgs[start_index].get('role') != 'user':
+                start_index += 1 
+            turn_msgs = turn_msgs[start_index:]
+            
         self.history = system_msgs + turn_msgs
+        
+    def rollback_last_turn(self):
+        """Removes the most recent user/assistant pair from history. 
+        Used to erase failed formatting attempts so they don't pollute memory."""
+        if len(self.history) >= 3: # Keep system prompt safe
+            self.history = self.history[:-2]
 
     def getLLMResponse(self, board, clue=None, feedback=None):
         turn_content = f"This is the current board as an array: {board}"
@@ -214,11 +225,11 @@ class LLM():
                 log(self.role, f"History truncated to {limit} chars (attempt {attempt}).", level="warning")
 
             reflection_prompt = (
-                "Batch transcript:\n"
+                f"CURRENT STRATEGY:\n{self.strategy_refinement if self.strategy_refinement else 'None'}\n\n"
+                "Batch transcript of recent games:\n"
                 f"{history_text}\n\n"
-                "Write up to 5 concise strategic rules to improve future performance.\n"
-                "Rules must be abstract -- no specific words from these games.\n"
-                "Output ONLY the numbered rules, nothing else."
+                "Based on the transcript, update or rewrite the CURRENT STRATEGY to improve future performance. "
+                "Keep it to a maximum of 5 concise, abstract rules. Output ONLY the numbered rules."
             )
 
             temp_history = [

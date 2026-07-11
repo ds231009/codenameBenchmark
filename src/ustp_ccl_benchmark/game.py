@@ -116,13 +116,18 @@ class Game:
     def getClue(self, feedback=None):
         max_attempts = 5
         clue_errors = []
+        error_feedback = "" # Add this
 
         for attempt in range(1, max_attempts + 1):
             try:
+                # Append the error warning if it exists
+                current_feedback = f"{feedback}\n\nWARNING ON PREVIOUS ATTEMPT: {error_feedback}" if error_feedback else feedback
+                
                 rawClue = self.modelCodemaster.getLLMResponse(
                     self.board.get_formatted("codemaster", show_only_unrevealed=True),
-                    feedback=feedback
+                    feedback=current_feedback
                 )
+                
                 match = re.search(r'\(\s*([^\s,()]+)\s*,\s*(\d+)\s*\)', rawClue)
                 if not match:
                     raise ClueFormatError(f"Could not find (word, count) format in response: {rawClue}")
@@ -145,6 +150,10 @@ class Game:
                     self.stats["errors"]["codemaster_format_errors"] += 1
                 else:
                     self.stats["errors"]["codemaster_rule_errors"] += 1
+                
+                # Capture the error for the next loop iteration
+                error_feedback = str(e)
+                self.modelGuesser.rollback_last_turn()
 
         self.stats["errors"]["codemaster_clue_failures"] += 1
         return None, 0, clue_errors
@@ -222,6 +231,7 @@ class Game:
                 else:
                     self.stats["errors"]["guesser_rule_errors"] += 1
                 error_feedback = str(e)
+                self.modelGuesser.rollback_last_turn()
 
         self.stats["errors"]["guesser_turn_forfeits"] += 1
         return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors}
