@@ -120,7 +120,6 @@ class Game:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                # Append the error warning if it exists
                 current_feedback = f"{feedback}\n\nWARNING ON PREVIOUS ATTEMPT: {error_feedback}" if error_feedback else feedback
                 
                 rawClue = self.modelCodemaster.getLLMResponse(
@@ -128,6 +127,12 @@ class Game:
                     feedback=current_feedback
                 )
                 
+                # --- ADD THIS CHECK ---
+                # If the API timed out or failed, it likely returned None.
+                if not isinstance(rawClue, str):
+                    raise ClueFormatError(f"API returned a non-string response (likely an API failure): {rawClue}")
+                # ----------------------
+
                 match = re.search(r'\(\s*([^\s,()]+)\s*,\s*(\d+)\s*\)', rawClue)
                 if not match:
                     raise ClueFormatError(f"Could not find (word, count) format in response: {rawClue}")
@@ -200,14 +205,16 @@ class Game:
             try:
                 prompt_clue = f"{clue}. WARNING: {error_feedback}" if error_feedback else clue
                 
-                # Pass the history_prompt as the 'feedback' keyword argument
                 rawGuess = self.modelGuesser.getLLMResponse(
                     self.board.remaining_words(), 
                     prompt_clue,
-                    feedback=history_prompt  # <-- ADD THIS
+                    feedback=history_prompt
                 )
-
-                match = re.search(r'\[([^\]]*)\]', rawGuess)
+                
+                if not isinstance(rawGuess, str):
+                    raise GuessFormatError(f"API returned a non-string response (likely an API failure): {rawGuess}")
+                
+                match = re.search(r'\[\s*([^\s,\[\]]+)\s*\]', rawGuess)
                 if not match:
                     raise GuessFormatError(f"Could not find [word] format in response: {rawGuess}")
 
