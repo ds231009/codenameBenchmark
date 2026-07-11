@@ -1,6 +1,7 @@
 """Runs a set of Codenames games (a "benchmark run") for one model pairing
 under one config, and saves the results to disk."""
 
+import csv
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -248,48 +249,53 @@ class GameSet:
         }
 
     def _appendLiveOutput(self):
-        """Appends this GameSet run's detailed live output to
-        results/live/{benchmarkID}.json.
-
-        This now captures, for the whole run:
-        - "boards": every board generated for this run (index-aligned with
-          game_index - 1), i.e. all the raw word/group layouts used.
-        - "games": for each game, every individual LLM call made by the
-          codemaster and by the guesser during that game, each with its
-          prompt and the model's raw response.
-        - "refinements": for each refinement step, every LLM call made while
-          generating the codemaster's and guesser's reflections (including
-          any failed/retried attempts), each with its prompt and response.
-
-        One file per benchmark_id regardless of model pairing or config --
-        every GameSet run sharing a benchmark_id appends a new entry to the
-        same list rather than creating a new file. Written once per full
-        run (not per individual game), after all games in this run finish.
+        """Saves this GameSet run's detailed live output to a unique CSV file.
+        
+        Captures every individual LLM call made by the codemaster and guesser 
+        during the game and refinement steps, formatted as (prompt, answer).
+        Uses a timestamped filename to ensure no models run is overwritten.
         """
-        live_path = liveOutputPath(self.benchmarkID)
+        live_dir = Path.cwd() / "results" / "live"
+        live_dir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            with open(live_path, "r", encoding="utf-8") as f:
-                live_data = json.load(f)
-            if not isinstance(live_data, list):
-                live_data = []
-        except (FileNotFoundError, json.JSONDecodeError):
-            live_data = []
+        # Sanitize model names for the filename
+        short_cm = self.modelCodemaster.modelName.replace(".", "").replace(":", "")
+        short_guesser = self.modelGuesser.modelName.replace(".", "").replace(":", "")
+        
+        # Create a unique filename to prevent overwriting
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_filename = f"{self.benchmarkID}_{short_cm}_{short_guesser}_{timestamp}.csv"
+        csv_path = live_dir / csv_filename
 
-        live_data.append({
-            "run_signature": self._run_signature(),
-            "modelCodemaster": self.modelCodemaster.modelName,
-            "modelGuesser": self.modelGuesser.modelName,
-            "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
-            "boards": self.all_boards_data,
-            "games": self.all_games_llm_calls,
-            "refinements": self.refinements_llm_calls,
-        })
+        # Flatten all LLM calls into a single list
+        all_calls = []
+        
+        # Extract game calls
+        for game_calls in self.all_games_llm_calls:
+            all_calls.extend(game_calls.get("codemaster_calls", []))
+            all_calls.extend(game_calls.get("guesser_calls", []))
+            
+        # Extract refinement calls
+        for ref_calls in self.refinements_llm_calls:
+            all_calls.extend(ref_calls.get("codemaster_calls", []))
+            all_calls.extend(ref_calls.get("guesser_calls", []))
 
-        with open(live_path, "w", encoding="utf-8") as f:
-            json.dump(live_data, f, indent=4, ensure_ascii=False)
+        # Write to CSV
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Prompt", "Answer"])
+            
+            for call in all_calls:
+                prompt = call.get("prompt", "")
+                answer = call.get("response", "")
+                
+                # If there was a context error or timeout, append it to the answer column
+                if call.get("error"):
+                    answer = f"{answer} [ERROR: {call.get('error')}]".strip()
+                    
+                writer.writerow([prompt, answer])
 
-        log("liveOutput", f"Appended run to {live_path}")
+        log("liveOutput", f"Saved full LLM interactions to {csv_path}")
 
     def saveStats(self):
         summary_data = {
