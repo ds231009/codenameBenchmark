@@ -103,13 +103,49 @@ class GameSet:
         for _ in range(total_games):
             board_pool = []
 
-            # Step A: Draw the required number of words from each language
+            # Step A: Draw the required number of words from each language.
+            # Dedup across the whole board, case-insensitive: the same string can
+            # live in more than one wordlist (e.g. ROSE in both DE and EN), and a
+            # wordlist file can contain a repeated line. Either one used to place
+            # the same word on the board twice, which is ambiguous for the guesser
+            # (two identical strings it can't tell apart) and can corrupt scoring,
+            # since the copies may sit in different groups. Every word is checked
+            # against what's already on the board before it's added.
+            seen = set()
+            remaining_by_lang = {}
             for lang, target_count in words_per_lang.items():
                 if target_count <= 0:
                     continue
                 lang_words_copy = loaded_wordlists[lang].copy()
-                for _ in range(target_count):
-                    board_pool.append(lang_words_copy.pop(random.randrange(len(lang_words_copy))))
+                random.shuffle(lang_words_copy)
+                drawn = 0
+                while drawn < target_count and lang_words_copy:
+                    candidate = lang_words_copy.pop()
+                    if candidate.upper() in seen:
+                        continue
+                    seen.add(candidate.upper())
+                    board_pool.append(candidate)
+                    drawn += 1
+                remaining_by_lang[lang] = lang_words_copy  # unused, still available
+
+            # If cross-language overlaps left us short of word_count, backfill
+            # from whatever unique words remain in any language rather than
+            # crashing. Ratios may drift slightly when this kicks in.
+            leftover_pool = [w for words in remaining_by_lang.values() for w in words]
+            random.shuffle(leftover_pool)
+            while len(board_pool) < total_board_size and leftover_pool:
+                candidate = leftover_pool.pop()
+                if candidate.upper() in seen:
+                    continue
+                seen.add(candidate.upper())
+                board_pool.append(candidate)
+
+            if len(board_pool) < total_board_size:
+                raise ValueError(
+                    f"Could not assemble {total_board_size} unique words from the "
+                    f"configured wordlists (only {len(board_pool)} available after "
+                    f"removing overlaps). Add more words or lower word_count."
+                )
 
             # Step B: Shuffle so languages are spread across groups randomly
             random.shuffle(board_pool)
@@ -152,8 +188,15 @@ class GameSet:
 
             initial_board_state = current_board.get_formatted("detailed", filter_by_group=["blue", "red", "assassin"])
 
+            # Actual per-group counts for THIS board (post-scaling), so the
+            # prompt can show the true split rather than the group_config ratios.
+            board_composition = {}
+            for card in raw_board_data:
+                board_composition[card["group"]] = board_composition.get(card["group"], 0) + 1
+
             # 3. Pass the Board and group_config into the Game
-            single_game = Game(self.modelCodemaster, self.modelGuesser, current_board, self.group_config, self.duration)
+            single_game = Game(self.modelCodemaster, self.modelGuesser, current_board, self.group_config, self.duration,
+                               board_composition=board_composition)
             game_result = single_game.play()
 
             self.all_games_results.append({

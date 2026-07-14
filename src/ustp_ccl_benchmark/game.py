@@ -20,7 +20,8 @@ from ustp_ccl_benchmark.exceptions import (
 
 
 class Game:
-    def __init__(self, llm_codemaster, llm_guesser, board, group_config: dict, duration: dict):
+    def __init__(self, llm_codemaster, llm_guesser, board, group_config: dict, duration: dict,
+                 board_composition: dict = None):
         self.modelCodemaster = llm_codemaster
         self.modelGuesser = llm_guesser
         self.board = board
@@ -28,6 +29,11 @@ class Game:
         self.duration = duration
         self.turn_history = []
         self.current_game_rounds = []
+
+        # Actual per-group word counts for THIS board (not the group_config
+        # ratios -- those get scaled by word_count in GameSet). Decremented as
+        # words are revealed so the prompt can show what's still in play.
+        self.remaining_composition = dict(board_composition) if board_composition else {}
 
         self.stats = {
             "errors": {
@@ -124,7 +130,8 @@ class Game:
                 
                 rawClue = self.modelCodemaster.getLLMResponse(
                     self.board.get_formatted("codemaster", show_only_unrevealed=True),
-                    feedback=current_feedback
+                    feedback=current_feedback,
+                    composition=self._composition_line()
                 )
                 
                 # --- ADD THIS CHECK ---
@@ -167,9 +174,17 @@ class Game:
         guesses = []
         continueGame = True
 
+        total_for_clue = count      # how many words this clue points to (fixed)
+        picked_this_turn = []       # running record of guesses already made this turn
+
         while count > 0:
-            # Pass it down to getGuess
-            guess_attempt = self.getGuess(clue, history_prompt)
+            # Tell the guesser what it has already picked this turn and how many
+            # guesses remain. Without this, a multi-guess clue just repeats the
+            # same stale history + clue with only the board shrinking, which the
+            # model can't distinguish from a fresh turn.
+            turn_context = self._build_guesser_context(history_prompt, picked_this_turn, count)
+
+            guess_attempt = self.getGuess(clue, total_for_clue, turn_context)
             outcome = guess_attempt["outcome"]
 
             if outcome == "pass":
@@ -189,26 +204,64 @@ class Game:
                 "attempts": guess_attempt["attempts"],
                 "errors": guess_attempt["errors"],
             })
+            picked_this_turn.append({"word": guess["word"], "group": guess["group"]})
             if not continueRound or not continueGame:
                 break
             count -= 1
 
         return guesses, continueGame
 
-    def getGuess(self, clue, history_prompt):
+    @staticmethod
+    def _build_guesser_context(history_prompt, picked_this_turn, guesses_remaining):
+        """Feedback shown to the guesser for a single guess within a round.
+
+        Adds the two things the raw history block never conveyed on multi-guess
+        turns: what was already picked THIS turn, and how many guesses are still
+        available for the current clue.
+        """
+        parts = [history_prompt]
+        if picked_this_turn:
+            picked = ", ".join(
+                f"'{g['word']}' (which was {g['group']})" for g in picked_this_turn
+            )
+            parts.append(f"SO FAR THIS TURN you have already guessed: {picked}.")
+        noun = "guess" if guesses_remaining == 1 else "guesses"
+        parts.append(
+            f"You have {guesses_remaining} {noun} remaining for the current clue. "
+            "To stop guessing and keep your points, reply [no guess]."
+        )
+        return "\n\n".join(parts)
+
+    def _composition_line(self):
+        """One-line summary of how many words of each group are still on the
+        board. Public info in Codenames (the starting split is known and every
+        reveal is in the turn history), so it's fair to show both sides."""
+        if not self.remaining_composition:
+            return ""
+        order = ["blue", "red", "assassin"]
+        comp = self.remaining_composition
+        keys = [k for k in order if k in comp] + [k for k in comp if k not in order]
+        body = ", ".join(f"{k}: {comp[k]}" for k in keys)
+        return f"Words still on the board by group: {body}"
+
+    def getGuess(self, clue, clue_count, history_prompt):
         """Returns a dict..."""
         max_attempts = 5
         guess_errors = []
         error_feedback = ""
 
+        noun = "word" if clue_count == 1 else "words"
+        clue_with_count = f"{clue} (points to {clue_count} {noun})"
+
         for attempt in range(1, max_attempts + 1):
             try:
-                prompt_clue = f"{clue}. WARNING: {error_feedback}" if error_feedback else clue
+                prompt_clue = f"{clue_with_count}. WARNING: {error_feedback}" if error_feedback else clue_with_count
                 
                 rawGuess = self.modelGuesser.getLLMResponse(
                     self.board.remaining_words(), 
                     prompt_clue,
-                    feedback=history_prompt
+                    feedback=history_prompt,
+                    composition=self._composition_line()
                 )
                 
                 if not isinstance(rawGuess, str):
@@ -253,6 +306,10 @@ class Game:
         continueGame, continueRound, score = True, True, 0
         group = guess["group"]
         word = guess["word"]
+
+        # A word just left the board -- keep the live composition in sync.
+        if group in self.remaining_composition:
+            self.remaining_composition[group] = max(0, self.remaining_composition[group] - 1)
 
         if group == "blue":
             score = 1

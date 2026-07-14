@@ -111,18 +111,29 @@ class LLM():
         if len(self.history) >= 3: # Keep system prompt safe
             self.history = self.history[:-2]
 
-    def getLLMResponse(self, board_words, clue=None, feedback=""):
+    def getLLMResponse(self, board_words, clue=None, feedback="", composition=""):
         """Formats the turn, calls the LLM, logs it, and returns the response.
 
         `clue` is only passed by the guesser call site (the codemaster has
         no clue to receive yet -- it's producing one). When present, it's
         folded into the prompt so the guesser actually sees what it's
         supposed to be guessing against.
+
+        `composition` is the "words still on the board by group" line. Both
+        roles get it.
+
+        The turn is assembled in a fixed order so the model always sees the
+        same layout: board, then group composition, then turn history (and
+        any within-turn context), then the current clue last.
         """
+        parts = [f"This is the current board as an array: {board_words}"]
+        if composition:
+            parts.append(composition)
+        if feedback:
+            parts.append(feedback)
         if clue is not None:
-            turn_content = f"{feedback}\n\nClue from Codemaster: {clue}\n\nThis is the current board as an array: {board_words}"
-        else:
-            turn_content = f"{feedback}\n\nThis is the current board as an array: {board_words}"
+            parts.append(f"Clue from Codemaster: {clue}")
+        turn_content = "\n\n".join(parts)
         self.history.append({'role': 'user', 'content': turn_content})
         
         self._trim_history()
