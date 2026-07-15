@@ -86,10 +86,19 @@ class Game:
         }
 
     def runRound(self, round_number):
+        # Turn history is kept in a compact one-line-per-turn format, e.g.
+        #   T1 (OCEAN,2) -> WASSER[blue], FISCH[red]
+        #   T2 (METALL,1) -> pass
+        # It's the model's ONLY memory of past turns: LLM calls are stateless
+        # (no chat history), so this block plus the current board is the
+        # entire round state. Same format is reused by the reflection step.
         if not self.turn_history:
             history_prompt = "This is the first turn. No guesses have been made yet."
         else:
-            history_prompt = "HISTORY OF PREVIOUS TURNS IN THIS GAME:\n" + "\n".join(self.turn_history)
+            history_prompt = (
+                "Turn history so far (clue -> guessed words with their revealed group):\n"
+                + "\n".join(self.turn_history)
+            )
 
         clue, count, clue_errors = self.getClue(feedback=history_prompt)
 
@@ -102,19 +111,19 @@ class Game:
         }
 
         if clue is None:
-            self.turn_history.append(f"- Turn {round_number}: Codemaster failed to format a clue. Turn skipped.")
+            self.turn_history.append(f"T{round_number} no valid clue -> turn skipped")
             return True, round_data
 
         guesses, continueGame = self.getGuesses(clue, count, history_prompt)
 
         round_data["guesses"] = guesses
-        guess_strings = [f"'{g['word']}' (which was {g['group']})" for g in guesses]
+        guess_strings = [f"{g['word']}[{g['group']}]" for g in guesses]
 
         if not guess_strings:
-            self.turn_history.append(f"- Turn {round_number}: You gave clue ({clue}, {count}). Guesser passed.")
+            self.turn_history.append(f"T{round_number} ({clue},{count}) -> pass")
         else:
             self.turn_history.append(
-                f"- Turn {round_number}: You gave clue ({clue}, {count}). Guesser picked: {', '.join(guess_strings)}."
+                f"T{round_number} ({clue},{count}) -> {', '.join(guess_strings)}"
             )
 
         return continueGame, round_data
@@ -163,9 +172,10 @@ class Game:
                 else:
                     self.stats["errors"]["codemaster_rule_errors"] += 1
                 
-                # Capture the error for the next loop iteration
+                # Capture the error for the next loop iteration. Calls are
+                # stateless, so the failed attempt leaves no trace anywhere
+                # except this warning line in the retry prompt.
                 error_feedback = str(e)
-                self.modelCodemaster.rollback_last_turn()
 
         self.stats["errors"]["codemaster_clue_failures"] += 1
         return None, 0, clue_errors
@@ -222,9 +232,9 @@ class Game:
         parts = [history_prompt]
         if picked_this_turn:
             picked = ", ".join(
-                f"'{g['word']}' (which was {g['group']})" for g in picked_this_turn
+                f"{g['word']}[{g['group']}]" for g in picked_this_turn
             )
-            parts.append(f"SO FAR THIS TURN you have already guessed: {picked}.")
+            parts.append(f"Already guessed this turn: {picked}.")
         noun = "guess" if guesses_remaining == 1 else "guesses"
         parts.append(
             f"You have {guesses_remaining} {noun} remaining for the current clue. "
@@ -267,18 +277,18 @@ class Game:
                 if not isinstance(rawGuess, str):
                     raise GuessFormatError(f"API returned a non-string response (likely an API failure): {rawGuess}")
                 
+                # Check for a pass BEFORE the word regex. "[no guess]" contains
+                # a space, so the [word] pattern below (which forbids whitespace)
+                # could never match it -- a deliberate pass was always being
+                # counted as a format error and retried.
+                if re.search(r'\[\s*no guess\s*\]', rawGuess, re.IGNORECASE):
+                    return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors}
+
                 match = re.search(r'\[\s*([^\s,\[\]]+)\s*\]', rawGuess)
                 if not match:
                     raise GuessFormatError(f"Could not find [word] format in response: {rawGuess}")
 
                 guess_word = match.group(1).strip().upper()
-
-                # FIX: this used to compare an upper-cased guess_word against the
-                # lowercase literal "no guess", which could never match -- a
-                # deliberate [no guess] pass was silently mis-handled as an
-                # "invalid word" guess. Compared upper-to-upper now.
-                if guess_word == "NO GUESS":
-                    return {"result": None, "outcome": "pass", "attempts": attempt, "errors": guess_errors}
 
                 if guess_word in self.board.remaining_words():
                     return {
@@ -297,7 +307,6 @@ class Game:
                 else:
                     self.stats["errors"]["guesser_rule_errors"] += 1
                 error_feedback = str(e)
-                self.modelGuesser.rollback_last_turn()
 
         self.stats["errors"]["guesser_turn_forfeits"] += 1
         return {"result": None, "outcome": "forfeit", "attempts": max_attempts, "errors": guess_errors}

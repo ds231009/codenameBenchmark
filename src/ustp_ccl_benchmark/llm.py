@@ -57,14 +57,20 @@ If you do not want to guess anything, output ONLY this exact string:
 
 
 class LLM():
-    # Max number of user/assistant turn-pairs kept in the live game history
-    # before older ones are dropped. Prevents self.history from growing
-    # unboundedly across a multi-round game -- it was previously only ever
-    # cleared at clearMemory() (once per refinement batch), which is what
-    # let prompts creep past 8192 tokens mid-game on smaller-context models.
-    # The system prompt (index 0) is always preserved.
-    MAX_HISTORY_TURN_PAIRS = 6
-    
+    # NOTE: this class is now STATELESS per call. There is no rolling chat
+    # history anymore -- every move call is exactly [system, user], where the
+    # user message carries the full current round state (board, composition,
+    # compact turn history, clue). game.py owns the turn history and passes
+    # it in as `feedback` each call.
+    #
+    # Why: the old design kept up to 6 user/assistant pairs in self.history
+    # AND embedded the full cumulative turn history into every new user
+    # message. The same turn result could appear 4-5 times in one prompt,
+    # every message repeated a (stale) board snapshot, and history leaked
+    # across games because clearMemory() only ran per refinement batch.
+    # Stateless calls make the prompt size flat per turn and remove the
+    # need for _trim_history() and rollback_last_turn() entirely.
+
     def __init__(self, base_llm, config, role):
         self.base_llm = base_llm
         self.modelName = base_llm.get_model_name() if hasattr(base_llm, 'get_model_name') else config.get("modelName", "Unknown")
@@ -89,42 +95,27 @@ class LLM():
         self.log_calls = True
 
         self.clearMemory()
-        
-    def _trim_history(self):
-        """Keeps the system prompt plus the most recent MAX_HISTORY_TURN_PAIRS."""
-        system_msgs = self.history[:1]
-        turn_msgs = self.history[1:]
-        
-        max_msgs = self.MAX_HISTORY_TURN_PAIRS * 2
-        
-        if len(turn_msgs) > max_msgs:
-            start_index = len(turn_msgs) - max_msgs
-            if turn_msgs[start_index].get('role') != 'user':
-                start_index += 1 
-            turn_msgs = turn_msgs[start_index:]
-            
-        self.history = system_msgs + turn_msgs
-        
-    def rollback_last_turn(self):
-        """Removes the most recent user/assistant pair from history. 
-        Used to erase failed formatting attempts so they don't pollute memory."""
-        if len(self.history) >= 3: # Keep system prompt safe
-            self.history = self.history[:-2]
 
     def getLLMResponse(self, board_words, clue=None, feedback="", composition=""):
-        """Formats the turn, calls the LLM, logs it, and returns the response.
+        """Builds a single self-contained user message, calls the LLM, logs
+        the call, and returns the response.
 
         `clue` is only passed by the guesser call site (the codemaster has
         no clue to receive yet -- it's producing one). When present, it's
         folded into the prompt so the guesser actually sees what it's
         supposed to be guessing against.
 
+        `feedback` is the full current round state from game.py: compact
+        turn history, within-turn context, and any retry warning. Since
+        there is no chat history, this message must (and does) carry
+        everything the model needs.
+
         `composition` is the "words still on the board by group" line. Both
         roles get it.
 
-        The turn is assembled in a fixed order so the model always sees the
-        same layout: board, then group composition, then turn history (and
-        any within-turn context), then the current clue last.
+        Fixed layout so the model always sees the same order: board, then
+        group composition, then turn history / within-turn context, then
+        the current clue last.
         """
         parts = [f"This is the current board as an array: {board_words}"]
         if composition:
@@ -134,15 +125,16 @@ class LLM():
         if clue is not None:
             parts.append(f"Clue from Codemaster: {clue}")
         turn_content = "\n\n".join(parts)
-        self.history.append({'role': 'user', 'content': turn_content})
-        
-        self._trim_history()
-        
-        full_prompt_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in self.history])
+
+        messages = [
+            {'role': 'system', 'content': self.system_content},
+            {'role': 'user', 'content': turn_content},
+        ]
+
+        full_prompt_text = "\n\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
 
         try:
-            response = self.callLLM()
-            self.history.append({'role': 'assistant', 'content': response})
+            response = self.callLLM(messages=messages)
 
             if self.log_calls:
                 self.call_log.append({
@@ -184,14 +176,15 @@ class LLM():
         """Render the batch as a terse, token-efficient transcript and truncate
         to char_limit if needed.
 
-        Compact format (one line per turn instead of one verbose sentence):
-            G1(WIN):  (GEWINDE,1) -> SCHRAUBE[blue+1]
-            G2(LOSS): (TAG,1) -> ASSASSIN[assassin-25]
+        game.py now records turn history in the compact one-line format
+        directly (e.g. "T1 (GEWINDE,1) -> SCHRAUBE[blue]"), so this only
+        prefixes each line with its game header instead of regex-parsing
+        verbose sentences back apart:
+            G1(WIN): T1 (GEWINDE,1) -> SCHRAUBE[blue]
+            G2(LOSS): T1 (TAG,1) -> GIFT[assassin]
 
         Returns (history_text, was_truncated).
         """
-        import re
-
         lines = []
         for game in refinement_batch:
             outcome = game.get("outcome", "?")
@@ -202,22 +195,7 @@ class LLM():
                 continue
 
             for turn_line in game['turn_history']:
-                # Original verbose format:
-                #   "- Turn 1: You gave clue (WORD, N). Guesser picked: 'X' (which was group)."
-                # We compress it to:
-                #   "G1(WIN): T1 (WORD,N) -> X[group]"
-                turn_num = re.search(r'Turn (\d+)', turn_line)
-                clue_match = re.search(r'\(([A-ZÄÖÜ]+),\s*(\d+)\)', turn_line)
-                picks = re.findall(r"'([^']+)' \(which was (\w+)\)", turn_line)
-
-                t = f"T{turn_num.group(1)}" if turn_num else "T?"
-                clue_str = f"({clue_match.group(1)},{clue_match.group(2)})" if clue_match else "(?,?)"
-                if picks:
-                    pick_str = ", ".join(f"{w}[{g}]" for w, g in picks)
-                else:
-                    pick_str = "pass"
-
-                lines.append(f"{header} {t} {clue_str} -> {pick_str}")
+                lines.append(f"{header} {turn_line}")
 
         history_text = "\n".join(lines)
 
@@ -329,21 +307,24 @@ class LLM():
     # ------------------------------------------------------------------
 
     def clearMemory(self):
-        """Wipes history but injects the learned strategy into the base prompt."""
-        system_content = self.prompt
-        if self.strategy_refinement:
-            system_content += "\n\n### YOUR CONTINUOUS LEARNING STRATEGY (Follow these tips strictly):\n"
-            system_content += self.strategy_refinement
+        """Rebuilds the system prompt, injecting the current learned strategy.
 
-        self.history = [{'role': 'system', 'content': system_content}]
-        log(self.role, "Memory cleared. Base prompt and strategy loaded.")
+        Since calls are stateless there is no chat history to wipe anymore;
+        this now only exists to refresh the strategy block after a
+        refinement step. Kept under the old name because GameSet calls it.
+        """
+        self.system_content = self.prompt
+        if self.strategy_refinement:
+            self.system_content += "\n\n### YOUR CONTINUOUS LEARNING STRATEGY (Follow these tips strictly):\n"
+            self.system_content += self.strategy_refinement
+        log(self.role, "System prompt rebuilt. Base prompt and strategy loaded.")
 
     # ------------------------------------------------------------------
     # LLM dispatch
     # ------------------------------------------------------------------
 
-    def callLLM(self, messages=None):
-        msgs = messages if messages is not None else self.history
+    def callLLM(self, messages):
+        msgs = messages
 
         langchain_msgs = []
         for m in msgs:
