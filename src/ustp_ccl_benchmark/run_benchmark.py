@@ -16,7 +16,12 @@ default_config: ConfigDict = {
     "duration":         [{"total_games": 4, "refinement_after": 2}],
     "language_config":  [{"DE": 1}],
     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}],
-    "word_count":       [10] 
+    "word_count":       [10],
+    # Secondary, non-iterated combos to run alongside the sweep above. Each
+    # entry is a complete run_kwargs dict, e.g.:
+    #   {"duration": {"total_games": 4}, "language_config": {"EN": 1},
+    #    "group_config": {"blue": 1, "red": 1, "assassin": 2}, "word_count": 10}
+    "direct_config":    [],
 }
 
 # default_config: ConfigDict = {
@@ -24,6 +29,50 @@ default_config: ConfigDict = {
 #     "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}],
 #     "group_config":     [{"blue": 4, "red": 4, "assassin": 2}]
 # }
+
+
+def _validate_run_kwargs(run_kwargs: dict) -> bool:
+    """Applies the same per-combo rule checks (duration/word_count/language/
+    group) to a single fully-formed run_kwargs dict, regardless of whether it
+    came from the itertools.product sweep or from a direct_config entry.
+    Prints a "Skipped combo" message and returns False on the first failure."""
+    d       = run_kwargs.get("duration")
+    lang    = run_kwargs.get("language_config")
+    grp     = run_kwargs.get("group_config")
+    w_count = run_kwargs.get("word_count")
+
+    # 1. Validate Duration
+    if not isinstance(d, dict) or "total_games" not in d or not isinstance(d["total_games"], int) or d["total_games"] <= 0:
+        print(f"Skipped combo: Invalid duration config {d}")
+        return False
+    if "refinement_after" in d and (
+        not isinstance(d["refinement_after"], int) or d["refinement_after"] <= 0
+    ):
+        print(f"Skipped combo: Invalid refinement config in {d}")
+        return False
+
+    # 2. Validate Word Count
+    if not isinstance(w_count, int) or w_count <= 0:
+        print(f"Skipped combo: Invalid word_count {w_count}")
+        return False
+
+    # 3. Validate Languages
+    if not isinstance(lang, dict) or not lang or not all(
+        isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()
+    ):
+        print(f"Skipped combo: Invalid language config {lang}")
+        return False
+
+    # 4. Validate Groups
+    if not isinstance(grp, dict) or "blue" not in grp or "red" not in grp or not all(
+        isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()
+    ):
+        print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
+        return False
+
+    # DIVISIBILITY CHECKS REMOVED HERE!
+
+    return True
 
 
 def get_valid_combinations(config: ConfigDict) -> list[dict]:
@@ -34,53 +83,31 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
             print(f"CRITICAL: Missing or empty required config key: '{key}'. Aborting benchmark.")
             return []
 
-    config_keys = list(config.keys())
-    config_values = list(config.values())
+    # Only these four keys feed the itertools.product sweep. direct_config is
+    # a separate, non-iterated list of already-complete run_kwargs dicts and
+    # must NOT be treated as another axis of the product.
+    sweep_keys = ["duration", "language_config", "group_config", "word_count"]
+    config_values = [config[key] for key in sweep_keys]
 
     valid_combinations = []
 
     for combo in itertools.product(*config_values):
-        run_kwargs = dict(zip(config_keys, combo))
-        is_valid = True
-
-        d       = run_kwargs["duration"]
-        lang    = run_kwargs["language_config"]
-        grp     = run_kwargs["group_config"]
-        w_count = run_kwargs["word_count"]
-
-        # 1. Validate Duration
-        if "total_games" not in d or not isinstance(d["total_games"], int) or d["total_games"] <= 0:
-            print(f"Skipped combo: Invalid duration config {d}")
-            is_valid = False
-        elif "refinement_after" in d and (
-            not isinstance(d["refinement_after"], int) or d["refinement_after"] <= 0
-        ):
-            print(f"Skipped combo: Invalid refinement config in {d}")
-            is_valid = False
-            
-        # 2. Validate Word Count
-        elif not isinstance(w_count, int) or w_count <= 0:
-            print(f"Skipped combo: Invalid word_count {w_count}")
-            is_valid = False
-
-        # 3. Validate Languages
-        elif not lang or not all(
-            isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in lang.items()
-        ):
-            print(f"Skipped combo: Invalid language config {lang}")
-            is_valid = False
-
-        # 4. Validate Groups
-        elif "blue" not in grp or "red" not in grp or not all(
-            isinstance(k, str) and isinstance(v, int) and v >= 0 for k, v in grp.items()
-        ):
-            print(f"Skipped combo: Invalid group config {grp}. Must have 'blue' and 'red'.")
-            is_valid = False
-
-        # DIVISIBILITY CHECKS REMOVED HERE!
-
-        if is_valid:
+        run_kwargs = dict(zip(sweep_keys, combo))
+        if _validate_run_kwargs(run_kwargs):
             valid_combinations.append(run_kwargs)
+
+    # Secondary, non-iterated path: explicit run_kwargs dicts to run as-is,
+    # mixed in alongside the sweep combinations above. Defaults to [] so this
+    # is fully opt-in and doesn't change behavior for existing configs.
+    for direct_run_kwargs in config.get("direct_config", []) or []:
+        if not isinstance(direct_run_kwargs, dict):
+            print(f"Skipped direct_config entry: not a dict: {direct_run_kwargs}")
+            continue
+        if not all(k in direct_run_kwargs for k in required_keys):
+            print(f"Skipped direct_config entry: missing required key(s): {direct_run_kwargs}")
+            continue
+        if _validate_run_kwargs(direct_run_kwargs):
+            valid_combinations.append(direct_run_kwargs)
 
     return valid_combinations
 

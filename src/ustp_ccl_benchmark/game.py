@@ -54,7 +54,7 @@ class Game:
         }
 
     def play(self):
-        max_turns = self.remaining_composition["blue"]
+        max_turns = 20
         outcome = "TIMEOUT"
 
         for turn in range(1, max_turns + 1):

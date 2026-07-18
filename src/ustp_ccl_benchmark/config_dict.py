@@ -5,3 +5,4 @@ class ConfigDict(TypedDict, total=False):
     language_config: list[dict[str, int]]
     group_config: list[dict[str, int]]
     word_count: list[int]
+    direct_config: list[dict]
