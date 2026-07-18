@@ -54,7 +54,7 @@ class Game:
         }
 
     def play(self):
-        max_turns = self.duration.get("rounds") or sum(self.group_config.values())
+        max_turns = self.remaining_composition["blue"]
         outcome = "TIMEOUT"
 
         for turn in range(1, max_turns + 1):

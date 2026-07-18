@@ -97,7 +97,7 @@ class GameSet:
                 )
 
         boards = []
-        total_games = self.duration["rounds"]
+        total_games = self.duration["total_games"]
 
         # Generate each board
         for _ in range(total_games):
@@ -173,11 +173,11 @@ class GameSet:
         def short(d: dict) -> str:
             return "-".join(f"{k}{v}" for k, v in d.items())
 
-        rounds = self.duration.get("rounds", "?")
-        return f"r{rounds}_w{self.word_count}_{short(self.language_config)}_{short(self.group_config)}"
+        total_games = self.duration.get("total_rounds", "?")
+        return f"r{total_games}_w{self.word_count}_{short(self.language_config)}_{short(self.group_config)}"
 
     def play(self):
-        total_games = self.duration["rounds"]
+        total_games = self.duration["total_games"]
         refinement_step = self.duration.get("refinement_after") or (total_games + 1)
 
         for game_index in tqdm(range(total_games), desc=f"Playing Benchmark ({self.benchmarkID})", unit="game"):

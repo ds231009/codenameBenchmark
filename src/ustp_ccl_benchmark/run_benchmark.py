@@ -13,14 +13,14 @@ from ustp_ccl_benchmark.llm import LLM
 ENABLE_LIVE_OUTPUT = True
 
 default_config: ConfigDict = {
-    "duration":         [{"rounds": 4, "refinement_after": 2}],
+    "duration":         [{"total_games": 4, "refinement_after": 2}],
     "language_config":  [{"DE": 1}],
     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}],
     "word_count":       [10] 
 }
 
 # default_config: ConfigDict = {
-#     "duration":         [{"rounds": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
+#     "duration":         [{"total_games": 10, "refinement_after": 2}, {"rounds": 10, "refinement_after": 5}, {"rounds": 20, "refinement_after": 5}],
 #     "language_config":  [{"DE": 5}, {"DE": 5, "EN": 5}],
 #     "group_config":     [{"blue": 4, "red": 4, "assassin": 2}]
 # }
@@ -49,7 +49,7 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
         w_count = run_kwargs["word_count"]
 
         # 1. Validate Duration
-        if "rounds" not in d or not isinstance(d["rounds"], int) or d["rounds"] <= 0:
+        if "total_games" not in d or not isinstance(d["total_games"], int) or d["total_games"] <= 0:
             print(f"Skipped combo: Invalid duration config {d}")
             is_valid = False
         elif "refinement_after" in d and (
