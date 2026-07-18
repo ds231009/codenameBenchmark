@@ -16,12 +16,7 @@ default_config: ConfigDict = {
     "duration":         [{"total_games": 4, "refinement_after": 2}],
     "language_config":  [{"DE": 1}],
     "group_config":     [{"blue": 1, "red": 1, "assassin": 2}],
-    "word_count":       [10],
-    # Secondary, non-iterated combos to run alongside the sweep above. Each
-    # entry is a complete run_kwargs dict, e.g.:
-    #   {"duration": {"total_games": 4}, "language_config": {"EN": 1},
-    #    "group_config": {"blue": 1, "red": 1, "assassin": 2}, "word_count": 10}
-    "direct_config":    [],
+    "word_count":       [10]
 }
 
 # default_config: ConfigDict = {
@@ -83,31 +78,35 @@ def get_valid_combinations(config: ConfigDict) -> list[dict]:
             print(f"CRITICAL: Missing or empty required config key: '{key}'. Aborting benchmark.")
             return []
 
-    # Only these four keys feed the itertools.product sweep. direct_config is
-    # a separate, non-iterated list of already-complete run_kwargs dicts and
-    # must NOT be treated as another axis of the product.
-    sweep_keys = ["duration", "language_config", "group_config", "word_count"]
-    config_values = [config[key] for key in sweep_keys]
+    config_keys = list(config.keys())
+    config_values = list(config.values())
 
     valid_combinations = []
 
     for combo in itertools.product(*config_values):
-        run_kwargs = dict(zip(sweep_keys, combo))
+        run_kwargs = dict(zip(config_keys, combo))
         if _validate_run_kwargs(run_kwargs):
             valid_combinations.append(run_kwargs)
 
-    # Secondary, non-iterated path: explicit run_kwargs dicts to run as-is,
-    # mixed in alongside the sweep combinations above. Defaults to [] so this
-    # is fully opt-in and doesn't change behavior for existing configs.
-    for direct_run_kwargs in config.get("direct_config", []) or []:
-        if not isinstance(direct_run_kwargs, dict):
-            print(f"Skipped direct_config entry: not a dict: {direct_run_kwargs}")
+    return valid_combinations
+
+
+def get_valid_direct_combinations(direct_config: list[dict]) -> list[dict]:
+    """Validates a list of already-complete run_kwargs dicts (the direct,
+    non-iterated path) using the same per-combo rules as the sweep, without
+    running them through itertools.product."""
+    required_keys = ["duration", "language_config", "group_config", "word_count"]
+    valid_combinations = []
+
+    for run_kwargs in direct_config or []:
+        if not isinstance(run_kwargs, dict):
+            print(f"Skipped direct_config entry: not a dict: {run_kwargs}")
             continue
-        if not all(k in direct_run_kwargs for k in required_keys):
-            print(f"Skipped direct_config entry: missing required key(s): {direct_run_kwargs}")
+        if not all(k in run_kwargs for k in required_keys):
+            print(f"Skipped direct_config entry: missing required key(s): {run_kwargs}")
             continue
-        if _validate_run_kwargs(direct_run_kwargs):
-            valid_combinations.append(direct_run_kwargs)
+        if _validate_run_kwargs(run_kwargs):
+            valid_combinations.append(run_kwargs)
 
     return valid_combinations
 
@@ -193,6 +192,7 @@ def run_benchmark(
     llm_model: Any,
     guesser_model: Any = None,
     custom_config: ConfigDict = None,
+    direct_config: list[dict] = None,
     benchmark_id: str = "bench",
     enable_live_output: bool = ENABLE_LIVE_OUTPUT,
 ) -> tuple[float, dict]:
@@ -201,7 +201,13 @@ def run_benchmark(
     custom_config = custom_config or {}
     active_config = default_config | custom_config
 
+    # 1. Always run the sweep (default_config, overridden by custom_config).
     valid_combinations = get_valid_combinations(active_config)
+
+    # 2. Then append any explicit, non-iterated combos from direct_config --
+    # a plain list of already-complete run_kwargs dicts, run exactly as
+    # given on top of whatever the sweep produced. Defaults to none.
+    valid_combinations += get_valid_direct_combinations(direct_config)
 
     if not valid_combinations:
         print("No valid configurations found to run. Exiting early.")
